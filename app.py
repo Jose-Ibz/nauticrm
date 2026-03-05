@@ -295,7 +295,7 @@ with st.sidebar:
     n_arch=len(archivo_frio)
     if n_arch>0: st.markdown(f"<div style='background:#1a3050;border-radius:6px;padding:6px 10px;font-size:0.75rem;color:#7a8fa6'>🧊 Archivo Frío: <b style='color:#e8e0d0'>{n_arch}</b></div>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
-    app_url = st.secrets.get("app_url","http://localhost:8501")
+    app_url = st.secrets.get("app_url","https://nauticrm-trn2jrtqldn9vfd4zic6hz.streamlit.app")
     st.markdown(f"<a href='{app_url}/?modo=feria' target='_blank' style='background:#c9a84c;color:#0a1628;padding:8px 14px;border-radius:6px;font-weight:700;font-size:0.8rem;text-decoration:none'>📱 Abrir modo Feria</a>", unsafe_allow_html=True)
 
 leads = all_leads_raw
