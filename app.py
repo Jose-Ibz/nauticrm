@@ -107,7 +107,8 @@ def load_leads():
     # Si solo hay una fila (las cabeceras), no hay leads aún
     if len(all_values) <= 1:
         return []
-    data = ws.get_all_records()
+    headers = all_values[0]
+    data = [dict(zip(headers, row)) for row in all_values[1:]]
     rows = []
     for r in data:
         # Saltar filas que sean cabeceras duplicadas
@@ -133,11 +134,16 @@ def load_leads():
 @st.cache_data(ttl=30)
 def load_config():
     ws = get_sheet("Config")
-    data = ws.get_all_records()
+    all_values = ws.get_all_values()
     vendedores = ["Vendedor 1","Vendedor 2","Vendedor 3"]
     boat_types = ["Velero","Motor","Catamarán","Zodiac","Charter","Jeanneau","Beneteau","Sunseeker","Princess","Azimut","Ferretti","Bavaria","Hanse","Lagoon","Otro"]
     sources    = ["Feria Náutica","Web","Referido","RRSS","Llamada Fría","Otro"]
     archivo    = []
+    if not all_values or len(all_values) <= 1:
+        data = []
+    else:
+        headers = all_values[0]
+        data = [dict(zip(headers, row)) for row in all_values[1:]]
     if not data:
         ws.append_row(["key","value"])
         for i,v in enumerate(vendedores): ws.append_row([f"v{i+1}",v])
@@ -169,19 +175,25 @@ def save_lead(lead, is_new=True):
     if is_new:
         ws.append_row(row)
     else:
-        data = ws.get_all_records()
-        for i,r in enumerate(data):
-            if r["id"] == lead["id"]:
-                ws.update(f"A{i+2}:{chr(64+len(LEAD_COLS))}{i+2}", [row])
-                break
+        all_values = ws.get_all_values()
+        if all_values and len(all_values) > 1:
+            headers = all_values[0]
+            data = [dict(zip(headers, row)) for row in all_values[1:]]
+            for i,r in enumerate(data):
+                if r.get("id") == lead["id"]:
+                    ws.update(f"A{i+2}:{chr(64+len(LEAD_COLS))}{i+2}", [row])
+                    break
     load_leads.clear()
 
 def delete_lead(lead_id):
     ws = get_sheet("Leads")
-    data = ws.get_all_records()
-    for i,r in enumerate(data):
-        if r["id"] == lead_id:
-            ws.delete_rows(i+2); break
+    all_values = ws.get_all_values()
+    if all_values and len(all_values) > 1:
+        headers = all_values[0]
+        data = [dict(zip(headers, row)) for row in all_values[1:]]
+        for i,r in enumerate(data):
+            if r.get("id") == lead_id:
+                ws.delete_rows(i+2); break
     load_leads.clear()
 
 def save_config(vendedores, boat_types, sources, archivo):
