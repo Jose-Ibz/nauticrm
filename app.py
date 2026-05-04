@@ -840,46 +840,59 @@ Sé directo, usa datos concretos del informe y enfócate en lo accionable. Forma
             _rcols=st.columns(min(len(_res),5))
             for _i,(_t,_n) in enumerate(sorted(_res.items(),key=lambda x:-x[1])[:5]):
                 _rcols[_i].metric(f"{_TIPO_ICONO.get(_t,'•')} {_t}",_n)
-        st.markdown("<br>",unsafe_allow_html=True)
-        # Timeline
-        _fecha_actual=None
-        for _ev in _eventos:
-            if _ev["fecha"]!=_fecha_actual:
-                _fecha_actual=_ev["fecha"]
-                try:
-                    _dt=datetime.strptime(_fecha_actual,"%Y-%m-%d")
-                    _dias=( date.today()-_dt.date()).days
-                    _relativo="Hoy" if _dias==0 else "Ayer" if _dias==1 else f"Hace {_dias} días"
-                    _fecha_fmt=_dt.strftime("%A %d de %B").capitalize()
-                except: _fecha_fmt=_fecha_actual; _relativo=""
-                st.markdown(f"""<div style='display:flex;align-items:center;gap:12px;margin:20px 0 8px'>
-                    <div style='height:1px;flex:1;background:#1a3050'></div>
-                    <div style='background:#0d1e35;border:1px solid #1a3050;border-radius:20px;padding:4px 16px;display:flex;gap:10px;align-items:center'>
-                        <span style='color:#c9a84c;font-size:0.78rem;font-weight:700'>{_fecha_fmt}</span>
-                        <span style='color:#4a5568;font-size:0.72rem'>{_relativo}</span>
+        # Construir HTML completo del timeline
+        import html as _html_mod
+        import streamlit.components.v1 as _comp_d
+        def _render_diario(eventos, tipo_icono, tipo_color):
+            if not eventos:
+                return "<div style='text-align:center;padding:48px;color:#4a5568;font-family:sans-serif'>Sin eventos en el período seleccionado.</div>"
+            partes=["<div style='font-family:\"Segoe UI\",sans-serif;padding:4px 0'>"]
+            fecha_actual=None
+            for ev in eventos:
+                if ev["fecha"]!=fecha_actual:
+                    fecha_actual=ev["fecha"]
+                    try:
+                        _dt=datetime.strptime(fecha_actual,"%Y-%m-%d")
+                        _dias=(date.today()-_dt.date()).days
+                        _rel="Hoy" if _dias==0 else "Ayer" if _dias==1 else f"Hace {_dias} d."
+                        _fmt=_dt.strftime("%A %d de %B").capitalize()
+                    except: _fmt=fecha_actual; _rel=""
+                    partes.append(f"""<div style="display:flex;align-items:center;gap:10px;margin:22px 0 10px">
+                      <div style="height:1px;flex:1;background:#1e3a5f"></div>
+                      <div style="background:#0d1e35;border:1px solid #1e3a5f;border-radius:20px;padding:5px 18px;display:flex;gap:10px;align-items:center;flex-shrink:0">
+                        <span style="color:#c9a84c;font-size:13px;font-weight:700">{_fmt}</span>
+                        <span style="color:#4a6080;font-size:11px">{_rel}</span>
+                      </div>
+                      <div style="height:1px;flex:1;background:#1e3a5f"></div>
+                    </div>""")
+                col=tipo_color.get(ev["tipo"],"#7a8fa6")
+                ico=tipo_icono.get(ev["tipo"],"•")
+                lead=_html_mod.escape(ev["lead"])
+                empresa=_html_mod.escape(ev.get("empresa",""))
+                nota=_html_mod.escape(ev.get("nota",""))
+                etapa=_html_mod.escape(ev.get("etapa",""))
+                partes.append(f"""<div style="display:flex;gap:12px;margin-bottom:8px;align-items:flex-start">
+                  <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+                    <div style="width:38px;height:38px;border-radius:50%;background:{col}25;border:2px solid {col};display:flex;align-items:center;justify-content:center;font-size:17px">{ico}</div>
+                    <div style="width:2px;background:#1e3a5f;flex:1;min-height:10px;margin-top:4px"></div>
+                  </div>
+                  <div style="background:#091520;border:1px solid #1e3a5f;border-radius:10px;padding:10px 15px;flex:1">
+                    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-bottom:5px">
+                      <span style="background:{col};color:#fff;border-radius:4px;padding:2px 10px;font-size:11px;font-weight:700">{_html_mod.escape(ev["tipo"])}</span>
+                      <span style="color:#e8e0d0;font-size:14px;font-weight:700">{lead}</span>
+                      {"<span style='color:#6b8aaa;font-size:12px'>· "+empresa+"</span>" if empresa else ""}
+                      {"<span style='background:#162035;color:#6b8aaa;border-radius:4px;padding:1px 8px;font-size:11px'>"+etapa+"</span>" if etapa else ""}
                     </div>
-                    <div style='height:1px;flex:1;background:#1a3050'></div>
-                </div>""",unsafe_allow_html=True)
-            _col=_TIPO_COLOR.get(_ev["tipo"],"#7a8fa6")
-            _ico=_TIPO_ICONO.get(_ev["tipo"],"•")
-            _etapa_badge=f"<span style='background:#1a3050;color:#7a8fa6;border-radius:3px;padding:1px 7px;font-size:0.65rem;margin-left:6px'>{_ev['etapa']}</span>" if _ev.get("etapa") else ""
-            st.markdown(f"""<div style='display:flex;gap:0;margin-bottom:6px'>
-                <div style='display:flex;flex-direction:column;align-items:center;margin-right:14px'>
-                    <div style='width:36px;height:36px;border-radius:50%;background:{_col}22;border:2px solid {_col};display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0'>{_ico}</div>
-                    <div style='width:2px;background:#1a3050;flex:1;min-height:8px;margin-top:3px'></div>
-                </div>
-                <div style='background:#091220;border:1px solid #1a3050;border-radius:8px;padding:10px 14px;flex:1;margin-bottom:2px'>
-                    <div style='display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:4px'>
-                        <span style='background:{_col};color:white;border-radius:4px;padding:2px 9px;font-size:0.68rem;font-weight:700'>{_ev['tipo']}</span>
-                        <span style='color:#e8e0d0;font-size:0.85rem;font-weight:700'>{_ev['lead']}</span>
-                        {(f"<span style='color:#7a8fa6;font-size:0.75rem'>· {_ev['empresa']}</span>") if _ev.get('empresa') else ''}
-                        {_etapa_badge}
-                    </div>
-                    <div style='color:#b0bec5;font-size:0.82rem;line-height:1.5'>{_ev['nota']}</div>
-                </div>
-            </div>""",unsafe_allow_html=True)
+                    <div style="color:#a0b4c8;font-size:13px;line-height:1.5">{nota}</div>
+                  </div>
+                </div>""")
+            partes.append("</div>")
+            return "".join(partes)
+        _html_diario=_render_diario(_eventos,_TIPO_ICONO,_TIPO_COLOR)
+        _altura_d=min(2400, max(300, len(_eventos)*90+100))
+        _comp_d.html(_html_diario, height=_altura_d, scrolling=True)
         if not _eventos:
-            st.markdown("<div style='text-align:center;padding:40px;color:#4a5568'>Sin eventos en el período seleccionado.</div>",unsafe_allow_html=True)
+            st.info("Sin eventos en el período seleccionado.")
 
     st.markdown("---")
     csv_inf=pd.DataFrame([{k:v for k,v in l.items() if k!="historial"} for l in all_leads_raw]).to_csv(index=False).encode("utf-8")
