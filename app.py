@@ -617,7 +617,7 @@ elif "Lead" in page:
         c6,c7=st.columns(2)
         tipo  =c6.selectbox("Tipo / Marca",boat_types,index=boat_types.index(d["tipoEmbarcacion"]) if d.get("tipoEmbarcacion") in boat_types else 0)
         modelo=c7.text_input("Modelo / Eslora",value=d.get("modeloEslora",""))
-        uso   =st.text_input("Uso previsto",value=d.get("usoPrevisto",""))
+        uso   =st.text_area("Notas internas",value=d.get("usoPrevisto",""),placeholder="Observaciones internas, contexto del cliente...",height=80)
         st.markdown("### 📋 Gestión Comercial")
         c9,c10,c11,c12=st.columns(4)
         etapa =c9.selectbox("Etapa",STAGES,index=STAGES.index(d["etapa"]) if d.get("etapa") in STAGES else 0)
@@ -861,7 +861,7 @@ elif "Archivo" in page:
             "Email":l.get("email",""),"Teléfono":l.get("telefono",""),
             "Idioma":l.get("idioma","—"),
             "Embarcación":f"{l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')}".strip(),
-            "Uso previsto":l.get("usoPrevisto",""),
+            "Notas internas":l.get("usoPrevisto",""),
             "Valor €":l.get("valorOperacion",0) or l.get("presupuesto",0),
             "Vendedor":l.get("asignadoA",""),
             "Fecha entrada":l.get("fechaCreacion",""),
