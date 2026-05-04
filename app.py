@@ -363,13 +363,6 @@ def _backup_to_github(all_leads, archivo, pasivos):
         fname = f"backup_{date.today().strftime('%Y%m%d')}.json"
         url   = f"https://api.github.com/repos/{repo}/contents/{fname}"
 
-        # Verificar que el repo es accesible
-        r_repo = _req.get(f"https://api.github.com/repos/{repo}", headers=headers, timeout=10)
-        if r_repo.status_code == 404:
-            return False, f"Repo '{repo}' no encontrado o sin acceso. Comprueba el nombre y el token."
-        if r_repo.status_code == 401:
-            return False, "Token inválido o sin permisos. Regenera el token con scope 'repo'."
-
         # Si el archivo ya existe hoy, obtener SHA para actualizarlo
         r_get = _req.get(url, headers=headers, timeout=15)
         sha   = r_get.json().get("sha") if r_get.status_code == 200 else None
@@ -382,7 +375,8 @@ def _backup_to_github(all_leads, archivo, pasivos):
             return True, f"GitHub: {repo}/{fname}"
         else:
             _detail = r_put.json()
-            return False, f"GitHub error {r_put.status_code}: {_detail.get('message','')} — {_detail.get('errors', '')}"
+            _errors = _detail.get('errors','')
+            return False, f"Error {r_put.status_code}: {_detail.get('message','')} {_errors} | token:{token[:12]}... repo:{repo}"
     except Exception as e:
         return False, str(e)
 
