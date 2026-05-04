@@ -337,6 +337,68 @@ def _last_backup_date():
         return datetime(int(ds[:4]), int(ds[4:6]), int(ds[6:8])).date()
     except: return None
 
+def _backup_to_github(all_leads, archivo, pasivos):
+    """Sube un JSON completo a un repositorio privado de GitHub.
+    Requiere secrets: github_token y backup_repo (ej: 'Jose-Ibz/nauticrm-backups').
+    """
+    import requests as _req, base64 as _b64, json as _jg
+    token = st.secrets.get("github_token","")
+    repo  = st.secrets.get("backup_repo","")
+    if not token or not repo:
+        return False, "github_token / backup_repo no configurados en secrets"
+    try:
+        # Construir JSON completo
+        export = {
+            "fecha": str(date.today()),
+            "generado_por": "NautiCRM - Náutica Viamar",
+            "leads_activos":    all_leads,
+            "archivo_frio":     archivo,
+            "clientes_pasivos": pasivos,
+        }
+        content_bytes = _jg.dumps(export, ensure_ascii=False, indent=2).encode("utf-8")
+        content_b64   = _b64.b64encode(content_bytes).decode("utf-8")
+
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        fname = f"backup_{date.today().strftime('%Y%m%d')}.json"
+        url   = f"https://api.github.com/repos/{repo}/contents/{fname}"
+
+        # Si el archivo ya existe hoy, obtener SHA para actualizarlo
+        r_get  = _req.get(url, headers=headers, timeout=15)
+        sha    = r_get.json().get("sha") if r_get.status_code == 200 else None
+
+        payload = {"message": f"NautiCRM backup {date.today()}", "content": content_b64}
+        if sha: payload["sha"] = sha
+        r_put = _req.put(url, headers=headers, json=payload, timeout=20)
+
+        if r_put.status_code in [200, 201]:
+            return True, f"GitHub: {repo}/{fname}"
+        else:
+            return False, f"GitHub error {r_put.status_code}: {r_put.json().get('message','')}"
+    except Exception as e:
+        return False, str(e)
+
+def _github_backup_configured():
+    return bool(st.secrets.get("github_token","") and st.secrets.get("backup_repo",""))
+
+def _last_github_backup_date():
+    """Comprueba la fecha del backup más reciente en GitHub."""
+    import requests as _req
+    token = st.secrets.get("github_token","")
+    repo  = st.secrets.get("backup_repo","")
+    if not token or not repo: return None
+    try:
+        headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+        r = _req.get(f"https://api.github.com/repos/{repo}/contents/", headers=headers, timeout=10)
+        if r.status_code != 200: return None
+        bak_files = sorted([f["name"] for f in r.json() if f["name"].startswith("backup_") and f["name"].endswith(".json")], reverse=True)
+        if not bak_files: return None
+        ds = bak_files[0][7:15]  # "20260504" from "backup_20260504.json"
+        return datetime(int(ds[:4]), int(ds[4:6]), int(ds[6:8])).date()
+    except: return None
+
 # ─── CARGAR DATOS ─────────────────────────────────────────────────────────────
 try:
     all_leads_raw = load_leads()
@@ -374,7 +436,9 @@ if _nuevos_pasivos:
 # Auto-backup diario (una vez por sesión, silencioso)
 if not st.session_state.get("_backup_done"):
     st.session_state["_backup_done"] = True
-    try: _do_backup()
+    try: _do_backup()                                                          # Google Sheets
+    except: pass
+    try: _backup_to_github(all_leads_raw, archivo_frio, clientes_pasivos)     # GitHub (si configurado)
     except: pass
 
 # ══ MODO FERIA ════════════════════════════════════════════════════════════════
@@ -450,9 +514,18 @@ with st.sidebar:
         _dias_bak = (date.today() - _lbd).days
         _bak_color = "#2d7a2d" if _dias_bak==0 else "#b8860b" if _dias_bak<=3 else "#8b1a1a"
         _bak_label = "hoy" if _dias_bak==0 else f"hace {_dias_bak}d"
-        st.markdown(f"<div style='background:{_bak_color};border-radius:6px;padding:5px 10px;font-size:0.72rem;color:#e8e0d0;margin-top:4px'>💾 Copia: <b>{_bak_label}</b></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='background:{_bak_color};border-radius:6px;padding:5px 10px;font-size:0.72rem;color:#e8e0d0;margin-top:4px'>💾 Sheets: <b>{_bak_label}</b></div>", unsafe_allow_html=True)
     else:
-        st.markdown(f"<div style='background:#8b1a1a;border-radius:6px;padding:5px 10px;font-size:0.72rem;color:#e8e0d0;margin-top:4px'>💾 Sin copias de seguridad</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='background:#8b1a1a;border-radius:6px;padding:5px 10px;font-size:0.72rem;color:#e8e0d0;margin-top:4px'>💾 Sin copias en Sheets</div>", unsafe_allow_html=True)
+    if _github_backup_configured():
+        _lbd_gh = _last_github_backup_date()
+        if _lbd_gh:
+            _dias_gh = (date.today() - _lbd_gh).days
+            _gh_color = "#1a3a6b" if _dias_gh==0 else "#b8860b" if _dias_gh<=3 else "#8b1a1a"
+            _gh_label = "hoy" if _dias_gh==0 else f"hace {_dias_gh}d"
+            st.markdown(f"<div style='background:{_gh_color};border-radius:6px;padding:5px 10px;font-size:0.72rem;color:#e8e0d0;margin-top:3px'>🐙 GitHub: <b>{_gh_label}</b></div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div style='background:#8b1a1a;border-radius:6px;padding:5px 10px;font-size:0.72rem;color:#e8e0d0;margin-top:3px'>🐙 GitHub: sin copias</div>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     app_url = st.secrets.get("app_url","https://nauticrm-trn2jrtqldn9vfd4zic6hz.streamlit.app")
     st.markdown(f"<a href='{app_url}/?modo=feria' target='_blank' style='background:#c9a84c;color:#0a1628;padding:8px 14px;border-radius:6px;font-weight:700;font-size:0.8rem;text-decoration:none'>📱 Abrir modo Feria</a>", unsafe_allow_html=True)
@@ -1823,25 +1896,48 @@ elif "Config" in page:
             save_config(vendedores,boat_types,["Feria Náutica","Web","Referido","RRSS","Llamada Fría","Otro"],archivo_frio,clientes_pasivos); st.rerun()
     with tab4:
         st.markdown("### 💾 Copias de Seguridad")
-        st.caption(f"Se genera una copia automática cada día al abrir la app. Se conservan las últimas **{BACKUP_MAX}** copias en Google Sheets.")
+        st.caption(f"Copia automática cada día al abrir la app. Últimas **{BACKUP_MAX}** en Google Sheets + copia independiente en GitHub si está configurado.")
 
-        # Estado actual
+        # ── Estado Google Sheets ──
         _bak_list = _list_backup_sheets()
         _lbd2 = _last_backup_date()
-        if _lbd2:
-            _dias2 = (date.today() - _lbd2).days
-            _badge = "🟢 Hoy" if _dias2==0 else f"🟡 Hace {_dias2} días" if _dias2<=3 else f"🔴 Hace {_dias2} días"
-            st.success(f"Última copia: **{_lbd2.strftime('%d/%m/%Y')}** — {_badge} · {len(_bak_list)} copias disponibles")
-        else:
-            st.warning("⚠️ Aún no hay copias de seguridad.")
+        _sh1, _sh2 = st.columns(2)
+        with _sh1:
+            st.markdown("#### 📊 Google Sheets")
+            if _lbd2:
+                _dias2 = (date.today() - _lbd2).days
+                _badge = "🟢 Hoy" if _dias2==0 else f"🟡 Hace {_dias2} días" if _dias2<=3 else f"🔴 Hace {_dias2} días"
+                st.success(f"Última: **{_lbd2.strftime('%d/%m/%Y')}** {_badge}")
+                st.caption(f"{len(_bak_list)} copias guardadas")
+            else:
+                st.warning("Sin copias todavía")
+            if st.button("📸 Copia Sheets ahora", use_container_width=True):
+                with st.spinner("Creando copia..."):
+                    _created, _msg = _do_backup()
+                if _created: st.success(f"✅ {_msg}")
+                else: st.info(f"ℹ️ {_msg}")
+                st.rerun()
 
-        # Botón copia manual
-        if st.button("📸 Crear copia ahora", use_container_width=False):
-            with st.spinner("Creando copia..."):
-                _created, _msg = _do_backup()
-            if _created: st.success(f"✅ Copia creada: {_msg}")
-            else: st.info(f"ℹ️ {_msg}")
-            st.rerun()
+        # ── Estado GitHub ──
+        with _sh2:
+            st.markdown("#### 🐙 GitHub (independiente)")
+            if _github_backup_configured():
+                _lbd_gh2 = _last_github_backup_date()
+                if _lbd_gh2:
+                    _dias_gh2 = (date.today() - _lbd_gh2).days
+                    _badge_gh = "🟢 Hoy" if _dias_gh2==0 else f"🟡 Hace {_dias_gh2} días" if _dias_gh2<=3 else f"🔴 Hace {_dias_gh2} días"
+                    st.success(f"Última: **{_lbd_gh2.strftime('%d/%m/%Y')}** {_badge_gh}")
+                else:
+                    st.warning("Configurado pero sin copias aún")
+                if st.button("🐙 Copia GitHub ahora", use_container_width=True):
+                    with st.spinner("Subiendo a GitHub..."):
+                        _ok_gh, _msg_gh = _backup_to_github(all_leads_raw, archivo_frio, clientes_pasivos)
+                    if _ok_gh: st.success(f"✅ {_msg_gh}")
+                    else: st.error(f"❌ {_msg_gh}")
+            else:
+                st.info("No configurado")
+                st.caption("Añade a Streamlit secrets:")
+                st.code("github_token = \"ghp_xxxx\"\nbackup_repo = \"Jose-Ibz/nauticrm-backups\"", language="toml")
 
         st.markdown("---")
         st.markdown("#### 📋 Copias disponibles")
