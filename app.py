@@ -727,12 +727,21 @@ Genera un informe completo en español con estas secciones:
 4. **Alertas y riesgos** (leads en riesgo, estancamientos, oportunidades perdidas)
 5. **Recomendaciones concretas** (mínimo 5 acciones específicas y prioritarias)
 
-CONTEXTO DEL CICLO COMERCIAL NÁUTICO (aplícalo siempre al interpretar los datos):
-- Vender una embarcación de recreo es un proceso largo: desde el primer contacto hasta cerrar pueden pasar semanas o meses.
-- "Propuesta Enviada" NO significa estancamiento: si el lead lleva menos de 21 días en esa etapa, o tiene una próxima acción futura planificada, está en proceso normal. Solo marca alerta si lleva más de 30 días sin ningún movimiento ni plan.
-- "Interés Confirmado" puede durar semanas mientras el cliente evalúa opciones, consulta financiación o espera la temporada.
-- Leads recién captados (menos de 14 días) o con próxima acción futura planificada NO son abandonados, aunque no tengan historial escrito — el campo "días_en_etapa" y "próx.acción" del detalle son la referencia real.
-- Usa el campo "días_en_etapa" para calibrar cada alerta: un lead en Propuesta Enviada con 5 días y acción futura es una oportunidad activa, no un problema.
+CONTEXTO DEL PROCESO DE VENTA DE NÁUTICA VIAMAR (aplícalo siempre al interpretar los datos):
+El pipeline sigue este flujo específico:
+1. PROSPECTO → fecha de entrada al CRM (primer contacto, habitualmente en feria o salón). Es el inicio del proceso.
+2. CONTACTADO → se ha contactado para completar datos o confirmar interés. Puede durar días.
+3. INTERÉS CONFIRMADO → el cliente ha confirmado interés, se está preparando la propuesta o esperando respuesta suya. Normal que dure 1-3 semanas.
+4. PROPUESTA ENVIADA → se ha enviado el presupuesto/oferta. La fecha de entrada a esta etapa ES la fecha de envío de la propuesta. Es completamente normal que el cliente tarde días o semanas en responder; NO es estancamiento salvo que supere 30 días sin ningún movimiento ni plan de seguimiento.
+5. NEGOCIACIÓN → el cliente no ha rechazado; se está negociando precio, condiciones, financiación. Puede durar semanas.
+6. CERRADO GANADO / CERRADO PERDIDO → resolución final.
+7. EN PAUSA / RECUPERABLE → cliente válido pero no está listo aún (tiene barco sin vender, espera liquidez, fuera de temporada, etc.). No es un lead perdido, es una oportunidad futura.
+
+Reglas para las alertas:
+- "Propuesta Enviada" con menos de 30 días en la etapa y/o con próxima acción futura planificada = proceso normal, NO alertar.
+- "Interés Confirmado" o "Negociación" con próxima acción planificada = proceso activo, NO alertar.
+- Solo alertar por estancamiento real: más de 30 días en cualquier etapa activa SIN ningún movimiento ni plan de seguimiento.
+- "En Pausa / Recuperable" NO es un problema: es gestión proactiva de oportunidades diferidas.
 
 Sé directo, usa datos concretos del informe y enfócate en lo accionable. Formato markdown."""
 
