@@ -310,6 +310,9 @@ with st.sidebar:
     # Navegación con soporte de redirección desde kanban/lista
     if "nav_page" not in st.session_state:
         st.session_state["nav_page"] = "⊞ Funnel Kanban"
+    if st.session_state.get("_nav_request"):
+        st.session_state["nav_page"] = st.session_state["_nav_request"]
+        st.session_state["_nav_request"] = None
     if st.session_state.get("goto_lead"):
         st.session_state["nav_page"] = "➕ Nuevo / Editar Lead"
     page = st.radio("Navegación",[
@@ -571,7 +574,7 @@ elif "Lead" in page:
             delete_lead(_del_id)
             st.session_state["pending_delete_id"]     = None
             st.session_state["pending_delete_nombre"] = None
-            st.session_state["nav_page"] = "⊞ Funnel Kanban"
+            st.session_state["_nav_request"] = "⊞ Funnel Kanban"
             st.rerun()
         if _c2.button("↩ Cancelar", use_container_width=True):
             st.session_state["pending_delete_id"]     = None
@@ -663,7 +666,7 @@ elif "Lead" in page:
                     _upd["proximaAccion"]      = _prox_a.strip()
                     _upd["fechaProximaAccion"] = str(_prox_d)
                 save_lead(_upd, is_new=False)
-                st.session_state["nav_page"] = "📅 Próximas Acciones"
+                st.session_state["_nav_request"] = "📅 Próximas Acciones"
                 st.rerun()
 
         # ── Historial de comunicaciones ───────────────────────────────────────
@@ -736,7 +739,7 @@ elif "Acciones" in page:
         with _pc2:
             if st.button("✏️", key=f"pa_{l['id']}", help="Ir a ficha y registrar actividad"):
                 st.session_state["goto_lead"] = l["nombre"]
-                st.session_state["nav_page"]  = "➕ Nuevo / Editar Lead"
+                st.session_state["_nav_request"] = "➕ Nuevo / Editar Lead"
                 st.rerun()
     if sin_accion:
         st.markdown("---"); st.markdown("### ⚪ Sin próxima acción")
