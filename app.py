@@ -325,8 +325,8 @@ with st.sidebar:
     if st.session_state.get("goto_lead"):
         st.session_state["nav_page"] = "➕ Nuevo / Editar Lead"
     page = st.radio("Navegación",[
-        "⊞ Funnel Kanban","≡ Lista de Leads","📊 Informes",
-        "➕ Nuevo / Editar Lead","📅 Próximas Acciones","🧊 Archivo Frío","⚙️ Configuración"
+        "⊞ Funnel Kanban","📅 Próximas Acciones","➕ Nuevo / Editar Lead",
+        "📊 Informes","≡ Lista de Leads","🧊 Archivo Frío","⚙️ Configuración"
     ], key="nav_page")
     if page != "➕ Nuevo / Editar Lead":
         st.session_state["goto_lead"] = None
