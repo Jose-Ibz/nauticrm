@@ -196,6 +196,15 @@ def delete_lead(lead_id):
                 ws.delete_rows(i+2); break
     load_leads.clear()
 
+def con_cambio_etapa(lead_dict, etapa_anterior):
+    """Si la etapa cambió, añade entrada automática al historial."""
+    nueva = lead_dict.get("etapa","")
+    if etapa_anterior and nueva and etapa_anterior != nueva:
+        hist = lead_dict.get("historial",[]).copy()
+        hist.append({"fecha":str(date.today()),"tipo":"Cambio etapa","nota":f"{etapa_anterior} → {nueva}"})
+        return {**lead_dict,"historial":hist}
+    return lead_dict
+
 def save_config(vendedores, boat_types, sources, archivo):
     import json
     ws = get_sheet("Config")
@@ -345,6 +354,8 @@ if "Kanban" in page:
         if _kc1.button("✅ Confirmar y guardar", use_container_width=True, key="causa_k_ok"):
             _lead_pc=_pc["lead"]
             _hist_pc=_lead_pc.get("historial",[]).copy()
+            if _pc.get("etapa_anterior") and _pc["etapa_anterior"]!=_pc["etapa"]:
+                _hist_pc.append({"fecha":str(date.today()),"tipo":"Cambio etapa","nota":f"{_pc['etapa_anterior']} → {_pc['etapa']}"})
             _tipo_pc="Cierre perdido" if _es_perdido else "Pausa"
             _hist_pc.append({"fecha":str(date.today()),"tipo":_tipo_pc,"nota":_causa_k.strip() or "Sin motivo indicado"})
             _lead_pc["historial"]=_hist_pc
@@ -398,11 +409,12 @@ if "Kanban" in page:
         if c3.button("✅ Cambiar"):
             if sel_k!="— Selecciona —":
                 lead_upd=next(l for l in all_leads_raw if l["nombre"]==sel_k)
+                _etapa_ant_k=lead_upd.get("etapa","")
                 lead_upd["etapa"]=nueva_etapa; lead_upd["ultimaActualizacion"]=str(date.today())
                 if nueva_etapa in ["Cerrado Perdido","En Pausa / Recuperable"]:
-                    st.session_state["pending_causa"]={"lead":lead_upd,"nombre":sel_k,"etapa":nueva_etapa}
+                    st.session_state["pending_causa"]={"lead":lead_upd,"nombre":sel_k,"etapa":nueva_etapa,"etapa_anterior":_etapa_ant_k}
                 else:
-                    save_lead(lead_upd, is_new=False)
+                    save_lead(con_cambio_etapa(lead_upd,_etapa_ant_k), is_new=False)
                     st.success(f"✅ {sel_k} → {nueva_etapa}")
                 st.rerun()
 
@@ -478,7 +490,7 @@ elif "Informes" in page:
     k3.metric("Forecast Mensual",fmt_eur(forecast),"Valor × Prob%")
     k4.metric("Sin actividad +7d",len(no_act),delta="⚠️ Revisar" if no_act else "✅ OK",delta_color="off")
     st.markdown("<br>", unsafe_allow_html=True)
-    tab1,tab2,tab3,tab4=st.tabs(["🔻 Embudo","📊 Pipeline & Fuentes","📋 Actividad","🤖 Informe IA"])
+    tab1,tab2,tab3,tab4,tab5=st.tabs(["🔻 Embudo","📊 Pipeline & Fuentes","📋 Actividad","🤖 Informe IA","📖 Diario"])
     with tab1:
         st.markdown("#### Embudo de Ventas")
         # Todas las etapas: funnel normal + cerrados/pausa con <13 meses
@@ -695,6 +707,22 @@ Por mes: {', '.join(f"{k}: {v}" for k,v in sorted(_act_por_mes.items()))}
 ### Altas de nuevos leads por mes
 {', '.join(f"{k}: {v}" for k,v in sorted(_altas_por_mes.items()))}
 
+### Tiempos de ciclo de venta (calculados desde historial)
+{(lambda _tiempos: chr(10).join(f"- {n}: {v}" for n,v in _tiempos.items()) if _tiempos else "- Sin datos suficientes aún")(dict(filter(lambda kv: kv[1] is not None, {
+    "Días promedio desde Alta hasta primera interacción": (lambda vals: round(sum(vals)/len(vals)) if vals else None)(
+        [v for v in [(lambda h,fc: (datetime.strptime(h[0]["fecha"],"%Y-%m-%d")-datetime.strptime(fc,"%Y-%m-%d")).days
+            if h and fc else None)(
+            sorted([x for x in l.get("historial",[]) if x["tipo"] not in ["Cambio etapa"]],key=lambda x:x["fecha"]),
+            l.get("fechaCreacion",""))
+         for l in _leads_ia] if v is not None and v>=0]),
+    "Días promedio hasta enviar propuesta (leads con ese cambio)": (lambda vals: round(sum(vals)/len(vals)) if vals else None)(
+        [v for v in [(lambda h,fc: (datetime.strptime(next((x["fecha"] for x in h if "Propuesta" in x.get("nota","")),None) or "","%Y-%m-%d")-datetime.strptime(fc,"%Y-%m-%d")).days
+            if next((x for x in h if "Propuesta" in x.get("nota","")),None) and fc else None)(
+            l.get("historial",[]),l.get("fechaCreacion",""))
+         for l in _leads_ia] if v is not None and v>=0]),
+}.items())))}
+
+
 ### Leads activos — detalle (etapa, alta, interacciones registradas, próxima acción)
 {chr(10).join(f"- {l['nombre']} | {l['etapa']} | alta:{l.get('fechaCreacion','?')} | interacciones:{len(l.get('historial',[]))} | próx.acción:{l.get('proximaAccion','—')} ({l.get('fechaProximaAccion','sin fecha')})" for l in _leads_ia if l['etapa'] not in ['Cerrado Ganado','Cerrado Perdido','En Pausa / Recuperable'])[:30]}
 
@@ -780,6 +808,47 @@ Sé directo, usa datos concretos del informe y enfócate en lo accionable. Forma
                 except Exception as _e:
                     st.error(f"Error al generar el informe: {_e}")
 
+    with tab5:
+        st.markdown("#### 📖 Diario de actividad")
+        _dcol1,_dcol2,_dcol3=st.columns(3)
+        _diario_desde=_dcol1.date_input("Desde",value=date.today()-timedelta(days=30),key="diario_desde")
+        _diario_hasta=_dcol2.date_input("Hasta",value=date.today(),key="diario_hasta")
+        _TIPOS_DIARIO=["Alta","Cambio etapa","Email","Llamada","Reunión","WhatsApp","Nota","Cierre perdido","Pausa"]
+        _diario_filtro=_dcol3.multiselect("Tipo",_TIPOS_DIARIO,default=[],key="diario_tipos",placeholder="Todos los tipos")
+        # Construir eventos
+        _eventos=[]
+        for _l in all_leads_raw:
+            if _l.get("fechaCreacion"):
+                _eventos.append({"fecha":_l["fechaCreacion"],"tipo":"Alta","lead":_l["nombre"],
+                    "nota":f"Lead captado · {_l.get('fuenteLead','—')} · {_l.get('tipoEmbarcacion','')} {_l.get('modeloEslora','')}".strip(" ·"),
+                    "etapa":_l["etapa"]})
+            for _h in _l.get("historial",[]):
+                _eventos.append({"fecha":_h["fecha"],"tipo":_h["tipo"],"lead":_l["nombre"],
+                    "nota":_h["nota"],"etapa":_l["etapa"]})
+        # Filtrar por fechas y tipo
+        _eventos=[e for e in _eventos
+            if str(_diario_desde)<=e["fecha"]<=str(_diario_hasta)
+            and (not _diario_filtro or e["tipo"] in _diario_filtro)]
+        _eventos.sort(key=lambda e:e["fecha"],reverse=True)
+        st.caption(f"{len(_eventos)} eventos en el período")
+        TIPO_COLOR_D={"Alta":"#16a34a","Cambio etapa":"#c9a84c","Email":"#2563eb","Llamada":"#16a34a",
+                      "Reunión":"#7c3aed","WhatsApp":"#25d366","Nota":"#c9a84c","Cierre perdido":"#dc2626","Pausa":"#374151"}
+        _fecha_actual=None
+        for _ev in _eventos:
+            if _ev["fecha"]!=_fecha_actual:
+                _fecha_actual=_ev["fecha"]
+                try: _fecha_fmt=datetime.strptime(_fecha_actual,"%Y-%m-%d").strftime("%A %d %B %Y").capitalize()
+                except: _fecha_fmt=_fecha_actual
+                st.markdown(f"<div style='color:#c9a84c;font-size:0.78rem;font-weight:700;margin:14px 0 4px;text-transform:uppercase;letter-spacing:.6px'>{_fecha_fmt}</div>",unsafe_allow_html=True)
+            _col=TIPO_COLOR_D.get(_ev["tipo"],"#7a8fa6")
+            st.markdown(f"""<div style='background:#091220;border:1px solid #1a3050;border-left:3px solid {_col};border-radius:6px;padding:8px 14px;margin-bottom:5px;display:flex;gap:12px;align-items:flex-start'>
+                <span style='background:{_col};color:white;border-radius:3px;padding:2px 8px;font-size:0.68rem;font-weight:700;white-space:nowrap;flex-shrink:0'>{_ev['tipo']}</span>
+                <span style='color:#c9a84c;font-size:0.82rem;font-weight:700;flex-shrink:0'>{_ev['lead']}</span>
+                <span style='color:#e8e0d0;font-size:0.82rem'>{_ev['nota']}</span>
+            </div>""",unsafe_allow_html=True)
+        if not _eventos:
+            st.info("Sin eventos en el período seleccionado.")
+
     st.markdown("---")
     csv_inf=pd.DataFrame([{k:v for k,v in l.items() if k!="historial"} for l in all_leads_raw]).to_csv(index=False).encode("utf-8")
     st.download_button("⬇️ Exportar CSV",data=csv_inf,file_name="nauticrm_informe.csv",mime="text/csv")
@@ -799,6 +868,8 @@ elif "Lead" in page:
         if _fc1.button("✅ Confirmar y guardar", use_container_width=True, key="causa_f_ok"):
             _lead_pc=_pc["lead"]
             _hist_pc=_lead_pc.get("historial",[]).copy()
+            if _pc.get("etapa_anterior") and _pc["etapa_anterior"]!=_pc["etapa"]:
+                _hist_pc.append({"fecha":str(date.today()),"tipo":"Cambio etapa","nota":f"{_pc['etapa_anterior']} → {_pc['etapa']}"})
             _tipo_pc="Cierre perdido" if _es_perdido else "Pausa"
             _hist_pc.append({"fecha":str(date.today()),"tipo":_tipo_pc,"nota":_causa_f.strip() or "Sin motivo indicado"})
             _lead_pc["historial"]=_hist_pc
@@ -850,11 +921,12 @@ elif "Lead" in page:
         c1,c2=st.columns([3,1])
         etapa_r=c1.selectbox("Nueva etapa",STAGES,index=STAGES.index(existing["etapa"]) if existing["etapa"] in STAGES else 0,key="etapa_r")
         if c2.button("✅ Actualizar"):
+            _etapa_ant_r=existing.get("etapa","")
             existing["etapa"]=etapa_r; existing["ultimaActualizacion"]=str(date.today())
             if etapa_r in ["Cerrado Perdido","En Pausa / Recuperable"]:
-                st.session_state["pending_causa"]={"lead":existing,"nombre":existing["nombre"],"etapa":etapa_r}
+                st.session_state["pending_causa"]={"lead":existing,"nombre":existing["nombre"],"etapa":etapa_r,"etapa_anterior":_etapa_ant_r}
             else:
-                save_lead(existing,is_new=False); st.success(f"✅ → {etapa_r}")
+                save_lead(con_cambio_etapa(existing,_etapa_ant_r),is_new=False); st.success(f"✅ → {etapa_r}")
             st.rerun()
         st.markdown("---")
     if st.session_state.get("_ultimo_guardado"):
@@ -895,9 +967,11 @@ elif "Lead" in page:
                 st.session_state["_guardando"] = True
                 new_lead={"id":d.get("id","") or str(uuid.uuid4()),"nombre":nombre,"empresa":empresa,"telefono":tel,"email":email,"idioma":idioma,"tipoEmbarcacion":tipo,"modeloEslora":modelo,"presupuesto":int(valor),"usoPrevisto":uso,"asignadoA":asig,"etapa":etapa,"probabilidad":int(prob),"valorOperacion":int(valor),"fuenteLead":fuente,"proximaAccion":prox_a,"fechaProximaAccion":str(prox_d),"historial":d.get("historial",[]),"fechaCreacion":d.get("fechaCreacion","") or str(date.today()),"ultimaActualizacion":str(date.today())}
                 st.session_state["_guardando"] = False
+                _etapa_ant_form = d.get("etapa","") if existing else ""
                 if etapa in ["Cerrado Perdido","En Pausa / Recuperable"]:
-                    st.session_state["pending_causa"]={"lead":new_lead,"nombre":nombre,"etapa":etapa}
+                    st.session_state["pending_causa"]={"lead":new_lead,"nombre":nombre,"etapa":etapa,"etapa_anterior":_etapa_ant_form}
                 else:
+                    if existing: new_lead=con_cambio_etapa(new_lead,_etapa_ant_form)
                     save_lead(new_lead,is_new=not bool(existing))
                     st.session_state["_ultimo_guardado"] = nombre
                     st.session_state["_sel_lead_request"] = nombre
