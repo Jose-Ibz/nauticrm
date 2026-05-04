@@ -342,7 +342,7 @@ with st.sidebar:
         st.session_state["nav_page"] = "➕ Nuevo / Editar Lead"
     page = st.radio("Navegación",[
         "⊞ Funnel Kanban","📅 Próximas Acciones","➕ Nuevo / Editar Lead",
-        "📊 Informes","≡ Lista de Leads","🧊 Archivo Frío","⚙️ Configuración"
+        "📊 Informes","💬 Asistente IA","≡ Lista de Leads","🧊 Archivo Frío","⚙️ Configuración"
     ], key="nav_page")
     if page != "➕ Nuevo / Editar Lead":
         st.session_state["goto_lead"] = None
@@ -1470,6 +1470,94 @@ elif "Archivo" in page:
             archivo_frio_nuevo=[l for l in archivo_frio if l["nombre"]!=sel_r]
             save_config(vendedores,boat_types,sources,archivo_frio_nuevo,clientes_pasivos)
             st.success(f"✅ {sel_r} reactivado."); st.rerun()
+
+# ══ ASISTENTE IA ══════════════════════════════════════════════════════════════
+elif "Asistente" in page:
+    import anthropic as _anth
+    st.markdown("## 💬 Asistente IA")
+    st.caption("Pregunta en lenguaje natural sobre tus leads, clientes y pipeline. Tiene acceso a todos los datos del CRM.")
+
+    # ── Contexto de datos para el sistema ─────────────────────────────────────
+    def _build_crm_context():
+        import json as _json
+        lines=[]
+        lines.append(f"HOY: {date.today()}")
+        lines.append(f"\n=== LEADS ACTIVOS ({len(all_leads_raw)}) ===")
+        for l in all_leads_raw:
+            hist_resumen=f"{len(l.get('historial',[]))} entradas" if l.get('historial') else "sin historial"
+            lines.append(
+                f"- {l.get('nombre','?')} | {l.get('empresa','')} | {l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')} | "
+                f"etapa:{l.get('etapa','')} | fuente:{l.get('fuenteLead','')} | vendedor:{l.get('asignadoA','')} | "
+                f"valor:€{l.get('valorOperacion',0) or l.get('presupuesto',0)} | idioma:{l.get('idioma','')} | "
+                f"alta:{l.get('fechaCreacion','')} | próx.acción:{l.get('proximaAccion','')} ({l.get('fechaProximaAccion','')}) | "
+                f"historial:{hist_resumen}"
+            )
+        if archivo_frio:
+            lines.append(f"\n=== ARCHIVO FRÍO ({len(archivo_frio)}) ===")
+            for l in archivo_frio:
+                lines.append(
+                    f"- {l.get('nombre','?')} | {l.get('empresa','')} | {l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')} | "
+                    f"fuente:{l.get('fuenteLead','')} | archivado:{l.get('fechaArchivo','')} | motivo:{l.get('motivoArchivo','')}"
+                )
+        if clientes_pasivos:
+            lines.append(f"\n=== CLIENTES PASIVOS / CERRADOS ({len(clientes_pasivos)}) ===")
+            for l in clientes_pasivos:
+                lines.append(
+                    f"- {l.get('nombre','?')} | {l.get('empresa','')} | {l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')} | "
+                    f"valor:€{l.get('valorOperacion',0)} | vendedor:{l.get('asignadoA','')} | "
+                    f"cierre:{l.get('ultimaActualizacion','')} | pasivo_desde:{l.get('fechaPasivo','')}"
+                )
+        return "\n".join(lines)
+
+    _SYS_CHAT = (
+        "Eres el asistente de CRM de Náutica Viamar, empresa náutica en Ibiza especializada en venta de barcos. "
+        "Tienes acceso completo a los datos del pipeline de ventas. Responde siempre en español, de forma concisa y estructurada. "
+        "Cuando hagas listados usa tablas markdown o listas con viñetas. "
+        "Si te preguntan por modelos de barco, busca en los campos tipoEmbarcacion y modeloEslora. "
+        "Fuentes de leads incluyen ferias (Feria Náutica, salones náuticos) y otras fuentes comerciales. "
+        "Las etapas del pipeline son: Prospecto → Contactado → Interés Confirmado → Propuesta Enviada → Negociación → Cerrado Ganado/Perdido/En Pausa. "
+        "Los leads en Archivo Frío son contactos descartados; los Clientes Pasivos son compradores históricos sin actividad comercial activa.\n\n"
+        + _build_crm_context()
+    )
+
+    # ── Historial de chat ──────────────────────────────────────────────────────
+    if "chat_ia" not in st.session_state:
+        st.session_state["chat_ia"] = []
+
+    col_h, col_btn = st.columns([6,1])
+    with col_btn:
+        if st.button("🗑️ Limpiar", use_container_width=True):
+            st.session_state["chat_ia"] = []; st.rerun()
+
+    # Mostrar historial
+    for msg in st.session_state["chat_ia"]:
+        with st.chat_message(msg["role"], avatar="🧑‍💼" if msg["role"]=="user" else "🤖"):
+            st.markdown(msg["content"])
+
+    # Input del usuario
+    if _pregunta := st.chat_input("Ej: ¿Quién quería un Sasga? ¿Cuántos leads cogimos en el salón de Palma?"):
+        st.session_state["chat_ia"].append({"role":"user","content":_pregunta})
+        with st.chat_message("user", avatar="🧑‍💼"):
+            st.markdown(_pregunta)
+
+        with st.chat_message("assistant", avatar="🤖"):
+            with st.spinner("Consultando datos..."):
+                try:
+                    _client_chat = _anth.Anthropic(api_key=st.secrets["anthropic_api_key"])
+                    _messages_api = [{"role": m["role"], "content": m["content"]} for m in st.session_state["chat_ia"]]
+                    _resp = _client_chat.messages.create(
+                        model="claude-opus-4-5",
+                        max_tokens=1500,
+                        system=_SYS_CHAT,
+                        messages=_messages_api
+                    )
+                    _respuesta = _resp.content[0].text
+                except Exception as _e:
+                    _respuesta = f"❌ Error al consultar la IA: {_e}"
+            st.markdown(_respuesta)
+
+        st.session_state["chat_ia"].append({"role":"assistant","content":_respuesta})
+        st.rerun()
 
 # ══ CONFIG ════════════════════════════════════════════════════════════════════
 elif "Config" in page:
