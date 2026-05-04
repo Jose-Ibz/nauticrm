@@ -591,10 +591,6 @@ elif "Informes" in page:
             # ── Preparar resumen de datos ─────────────────────────────────────
             _todos=_leads_ia+_arch_ia
             _por_etapa={s:len([l for l in _leads_ia if l["etapa"]==s]) for s in STAGES}
-            _por_vendedor={v:{"leads":len([l for l in _leads_ia if l["asignadoA"]==v]),
-                              "ganados":len([l for l in _leads_ia if l["asignadoA"]==v and l["etapa"]=="Cerrado Ganado"]),
-                              "valor":sum(l.get("valorOperacion",0) for l in _leads_ia if l["asignadoA"]==v and l["etapa"]=="Cerrado Ganado")}
-                          for v in vendedores}
             _por_tipo={}
             for l in _todos:
                 t=l.get("tipoEmbarcacion","—"); _por_tipo[t]=_por_tipo.get(t,0)+1
@@ -646,9 +642,6 @@ PERÍODO ANALIZADO: {"Todo el histórico" if not _d_ini else f"{_d_ini} a {_d_fi
 ### Leads por etapa
 {chr(10).join(f"- {k}: {v}" for k,v in _por_etapa.items() if v>0)}
 
-### Rendimiento por vendedor
-{chr(10).join(f"- {v}: {d['leads']} leads, {d['ganados']} ganados, €{d['valor']:,} facturado" for v,d in _por_vendedor.items())}
-
 ### Leads por tipo de embarcación
 {chr(10).join(f"- {k}: {v}" for k,v in sorted(_por_tipo.items(),key=lambda x:-x[1]))}
 
@@ -675,7 +668,7 @@ Por mes: {', '.join(f"{k}: {v}" for k,v in sorted(_act_por_mes.items()))}
 ## INSTRUCCIONES
 Genera un informe completo en español con estas secciones:
 1. **Resumen ejecutivo** (3-4 frases clave)
-2. **Análisis de rendimiento** (pipeline, conversión, vendedores)
+2. **Análisis de pipeline** (estado del embudo, conversión, valor en juego)
 3. **Patrones detectados** (estacionalidad, tipos de cliente que cierran más, fuentes más rentables, idiomas relevantes)
 4. **Alertas y riesgos** (leads en riesgo, estancamientos, oportunidades perdidas)
 5. **Recomendaciones concretas** (mínimo 5 acciones específicas y prioritarias)
