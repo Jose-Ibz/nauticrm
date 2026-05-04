@@ -452,7 +452,7 @@ elif "Informes" in page:
     k3.metric("Forecast Mensual",fmt_eur(forecast),"Valor × Prob%")
     k4.metric("Sin actividad +7d",len(no_act),delta="⚠️ Revisar" if no_act else "✅ OK",delta_color="off")
     st.markdown("<br>", unsafe_allow_html=True)
-    tab1,tab2,tab3=st.tabs(["🔻 Embudo","📊 Pipeline & Fuentes","📋 Actividad"])
+    tab1,tab2,tab3,tab4=st.tabs(["🔻 Embudo","📊 Pipeline & Fuentes","📋 Actividad","🤖 Informe IA"])
     with tab1:
         st.markdown("#### Embudo de Ventas")
         # Todas las etapas: funnel normal + cerrados/pausa con <13 meses
@@ -556,6 +556,151 @@ elif "Informes" in page:
                 for l in no_act:
                     d=days_since(l.get("ultimaActualizacion","") or l.get("fechaCreacion",""))
                     st.markdown(f"<div style='display:flex;justify-content:space-between;padding:6px 10px;margin-bottom:5px;background:#0d1e35;border:1px solid #e74c3c33;border-radius:6px'><span style='color:#e8e0d0;font-size:0.82rem'>{l['nombre']}</span><span style='color:#e74c3c;font-size:0.78rem'>{d}d·{l['asignadoA'].replace('Vendedor','V.')}</span></div>", unsafe_allow_html=True)
+    with tab4:
+        st.markdown("#### 🤖 Informe IA — Análisis y Patrones")
+        st.markdown("<div style='color:#7a8fa6;font-size:0.82rem;margin-bottom:16px'>Claude analiza todos los datos del CRM y detecta patrones, tendencias y oportunidades de mejora.</div>",unsafe_allow_html=True)
+
+        # ── Filtro de período ─────────────────────────────────────────────────
+        _ia1,_ia2,_ia3=st.columns(3)
+        _periodo=_ia1.selectbox("Período",["Todo","Este año","Este trimestre","Este mes","Fechas personalizadas"],key="ia_periodo")
+        _hoy=date.today()
+        if _periodo=="Este mes":
+            _d_ini=_hoy.replace(day=1); _d_fin=_hoy
+        elif _periodo=="Este trimestre":
+            _q=(_hoy.month-1)//3; _d_ini=date(_hoy.year,_q*3+1,1); _d_fin=_hoy
+        elif _periodo=="Este año":
+            _d_ini=date(_hoy.year,1,1); _d_fin=_hoy
+        elif _periodo=="Fechas personalizadas":
+            _d_ini=_ia2.date_input("Desde",value=date(_hoy.year,1,1),key="ia_desde")
+            _d_fin=_ia3.date_input("Hasta",value=_hoy,key="ia_hasta")
+        else:
+            _d_ini=None; _d_fin=None
+
+        def _en_periodo(l):
+            if not _d_ini: return True
+            try: return _d_ini<=datetime.strptime(str(l.get("fechaCreacion","")),"%Y-%m-%d").date()<=_d_fin
+            except: return False
+
+        _leads_ia=[l for l in all_leads_raw if _en_periodo(l)]
+        _arch_ia=[l for l in archivo_frio if not _d_ini or (lambda d: _d_ini<=d<=_d_fin if d else False)(
+            (lambda s: datetime.strptime(s,"%Y-%m-%d").date() if s else None)(l.get("fechaArchivo","")))]
+
+        st.caption(f"{len(_leads_ia)} leads activos + {len(_arch_ia)} en archivo frío en el período seleccionado")
+
+        if st.button("🤖 Generar informe IA",use_container_width=True):
+            # ── Preparar resumen de datos ─────────────────────────────────────
+            _todos=_leads_ia+_arch_ia
+            _por_etapa={s:len([l for l in _leads_ia if l["etapa"]==s]) for s in STAGES}
+            _por_vendedor={v:{"leads":len([l for l in _leads_ia if l["asignadoA"]==v]),
+                              "ganados":len([l for l in _leads_ia if l["asignadoA"]==v and l["etapa"]=="Cerrado Ganado"]),
+                              "valor":sum(l.get("valorOperacion",0) for l in _leads_ia if l["asignadoA"]==v and l["etapa"]=="Cerrado Ganado")}
+                          for v in vendedores}
+            _por_tipo={}
+            for l in _todos:
+                t=l.get("tipoEmbarcacion","—"); _por_tipo[t]=_por_tipo.get(t,0)+1
+            _por_fuente={}
+            for l in _todos:
+                f=l.get("fuenteLead","—"); _por_fuente[f]=_por_fuente.get(f,0)+1
+            _por_idioma={}
+            for l in _todos:
+                i=l.get("idioma","—"); _por_idioma[i]=_por_idioma.get(i,0)+1
+            _actividad=[]
+            for l in _leads_ia:
+                for h in l.get("historial",[]):
+                    _actividad.append({"lead":l["nombre"],"fecha":h["fecha"],"tipo":h["tipo"],"nota":h["nota"][:120]})
+            _actividad.sort(key=lambda x:x["fecha"],reverse=True)
+            _act_por_tipo={}
+            for a in _actividad:
+                _act_por_tipo[a["tipo"]]=_act_por_tipo.get(a["tipo"],0)+1
+            # Actividad por mes
+            _act_por_mes={}
+            for a in _actividad:
+                try: _mes=a["fecha"][:7]
+                except: _mes="—"
+                _act_por_mes[_mes]=_act_por_mes.get(_mes,0)+1
+            # Altas por mes
+            _altas_por_mes={}
+            for l in _leads_ia:
+                try: _mes=l.get("fechaCreacion","")[:7]
+                except: _mes="—"
+                if _mes: _altas_por_mes[_mes]=_altas_por_mes.get(_mes,0)+1
+            _sin_actividad=[l["nombre"] for l in _leads_ia if not l.get("historial") and l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido"]]
+            _estancados=[l["nombre"] for l in _leads_ia if days_since(l.get("ultimaActualizacion") or l.get("fechaCreacion",""))>30 and l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"]]
+            _pipeline_activo=sum(l.get("valorOperacion",0) for l in _leads_ia if l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"])
+            _valor_ganado=sum(l.get("valorOperacion",0) for l in _leads_ia if l["etapa"]=="Cerrado Ganado")
+            _valor_perdido=sum(l.get("valorOperacion",0) for l in _leads_ia if l["etapa"]=="Cerrado Perdido")
+
+            _prompt=f"""Eres un consultor experto en ventas náuticas analizando los datos del CRM de Náutica Viamar, una empresa especializada en embarcaciones de recreo.
+
+PERÍODO ANALIZADO: {"Todo el histórico" if not _d_ini else f"{_d_ini} a {_d_fin}"}
+
+## DATOS DEL CRM
+
+### Resumen general
+- Total leads en período: {len(_leads_ia)} activos + {len(_arch_ia)} en archivo frío
+- Pipeline activo: €{_pipeline_activo:,}
+- Valor cerrado ganado: €{_valor_ganado:,}
+- Valor cerrado perdido: €{_valor_perdido:,}
+- Tasa de conversión: {round(len([l for l in _leads_ia if l['etapa']=='Cerrado Ganado'])/max(len(_leads_ia),1)*100,1)}%
+
+### Leads por etapa
+{chr(10).join(f"- {k}: {v}" for k,v in _por_etapa.items() if v>0)}
+
+### Rendimiento por vendedor
+{chr(10).join(f"- {v}: {d['leads']} leads, {d['ganados']} ganados, €{d['valor']:,} facturado" for v,d in _por_vendedor.items())}
+
+### Leads por tipo de embarcación
+{chr(10).join(f"- {k}: {v}" for k,v in sorted(_por_tipo.items(),key=lambda x:-x[1]))}
+
+### Leads por fuente de captación
+{chr(10).join(f"- {k}: {v}" for k,v in sorted(_por_fuente.items(),key=lambda x:-x[1]))}
+
+### Leads por idioma
+{chr(10).join(f"- {k}: {v}" for k,v in sorted(_por_idioma.items(),key=lambda x:-x[1]))}
+
+### Actividad registrada ({len(_actividad)} interacciones)
+Por tipo: {', '.join(f"{k}: {v}" for k,v in _act_por_tipo.items())}
+Por mes: {', '.join(f"{k}: {v}" for k,v in sorted(_act_por_mes.items()))}
+
+### Altas de nuevos leads por mes
+{', '.join(f"{k}: {v}" for k,v in sorted(_altas_por_mes.items()))}
+
+### Alertas
+- Leads sin ninguna actividad registrada ({len(_sin_actividad)}): {', '.join(_sin_actividad[:10])}{'...' if len(_sin_actividad)>10 else ''}
+- Leads estancados +30 días sin actividad ({len(_estancados)}): {', '.join(_estancados[:10])}{'...' if len(_estancados)>10 else ''}
+
+### Muestra de actividad reciente (últimas 20 interacciones)
+{chr(10).join(f"- [{a['fecha']}] {a['lead']} | {a['tipo']}: {a['nota']}" for a in _actividad[:20])}
+
+## INSTRUCCIONES
+Genera un informe completo en español con estas secciones:
+1. **Resumen ejecutivo** (3-4 frases clave)
+2. **Análisis de rendimiento** (pipeline, conversión, vendedores)
+3. **Patrones detectados** (estacionalidad, tipos de cliente que cierran más, fuentes más rentables, idiomas relevantes)
+4. **Alertas y riesgos** (leads en riesgo, estancamientos, oportunidades perdidas)
+5. **Recomendaciones concretas** (mínimo 5 acciones específicas y prioritarias)
+
+Sé directo, usa datos concretos del informe y enfócate en lo accionable. Formato markdown."""
+
+            with st.spinner("🤖 Claude está analizando los datos..."):
+                try:
+                    import anthropic as _anthropic
+                    _client=_anthropic.Anthropic(api_key=st.secrets["anthropic_api_key"])
+                    _msg=_client.messages.create(
+                        model="claude-opus-4-5",
+                        max_tokens=2000,
+                        messages=[{"role":"user","content":_prompt}]
+                    )
+                    _informe=_msg.content[0].text
+                    st.markdown("---")
+                    st.markdown(_informe)
+                    st.markdown("---")
+                    import io as _io_ia
+                    st.download_button("⬇️ Descargar informe .txt",data=_informe.encode("utf-8"),
+                        file_name=f"informe_ia_{date.today()}.txt",mime="text/plain")
+                except Exception as _e:
+                    st.error(f"Error al generar el informe: {_e}")
+
     st.markdown("---")
     csv_inf=pd.DataFrame([{k:v for k,v in l.items() if k!="historial"} for l in all_leads_raw]).to_csv(index=False).encode("utf-8")
     st.download_button("⬇️ Exportar CSV",data=csv_inf,file_name="nauticrm_informe.csv",mime="text/csv")
