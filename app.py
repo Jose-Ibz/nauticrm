@@ -585,10 +585,13 @@ elif "Lead" in page:
     # ── Selector de lead ──────────────────────────────────────────────────────
     leads_editables=sorted(all_leads_raw,key=lambda l:l.get("fechaCreacion",""),reverse=True)
     nombres_lista=["— Crear nuevo lead —"]+[l["nombre"] for l in leads_editables]
-    goto=st.session_state.get("goto_lead")
-    default_idx=nombres_lista.index(goto) if goto and goto in nombres_lista else 0
-    sel=st.selectbox("Seleccionar lead existente",nombres_lista,index=default_idx)
-    if goto: st.session_state["goto_lead"]=None
+    _goto=st.session_state.get("goto_lead")
+    if _goto:
+        st.session_state["sel_lead"] = _goto if _goto in nombres_lista else nombres_lista[0]
+        st.session_state["goto_lead"] = None
+    if "sel_lead" not in st.session_state:
+        st.session_state["sel_lead"] = nombres_lista[0]
+    sel=st.selectbox("Seleccionar lead existente",nombres_lista,key="sel_lead")
     existing=None if sel=="— Crear nuevo lead —" else next((l for l in leads_editables if l["nombre"]==sel),None)
     d=existing or {}
     if existing:
@@ -640,7 +643,7 @@ elif "Lead" in page:
                 save_lead(new_lead,is_new=not bool(existing))
                 st.session_state["_guardando"] = False
                 st.session_state["_ultimo_guardado"] = nombre
-                st.session_state["goto_lead"] = nombre
+                st.session_state["sel_lead"] = nombre
                 st.rerun()
 
     if existing:
