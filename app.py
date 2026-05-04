@@ -370,7 +370,7 @@ if "Kanban" in page:
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("⚡ Cambio rápido de estado"):
         c1,c2,c3=st.columns(3)
-        nombres_k=[l["nombre"] for l in all_leads_raw if l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido"]]
+        nombres_k=[l["nombre"] for l in sorted(all_leads_raw,key=lambda l:l.get("fechaCreacion",""),reverse=True) if l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido"]]
         sel_k=c1.selectbox("Lead",["— Selecciona —"]+nombres_k,key="sel_k")
         nueva_etapa=c2.selectbox("Nueva etapa",STAGES,key="etapa_k")
         if c3.button("✅ Cambiar"):
