@@ -68,8 +68,8 @@ h1,h2,h3{font-family:'Playfair Display',serif!important;color:#c9a84c!important}
 [data-testid="metric-container"] label{color:#7a8fa6!important;font-size:0.7rem!important;text-transform:uppercase;letter-spacing:1px}
 [data-testid="metric-container"] [data-testid="stMetricValue"]{color:#c9a84c!important;font-family:monospace!important;font-size:1.6rem!important}
 .stTextInput input,.stNumberInput input,.stTextArea textarea{background:#091220!important;color:#e8e0d0!important;border:1px solid #1a3050!important}
-.stButton>button{background:#c9a84c!important;color:#0a1628!important;font-weight:700!important;border:none!important;border-radius:6px!important}
-.stButton>button:hover{opacity:.88!important}
+.stButton>button,[data-testid="stFormSubmitButton"]>button{background:#c9a84c!important;color:#0a1628!important;font-weight:700!important;border:none!important;border-radius:6px!important}
+.stButton>button:hover,[data-testid="stFormSubmitButton"]>button:hover{opacity:.88!important}
 .stDataFrame{border:1px solid #1a3050!important;border-radius:8px!important}
 .stTabs [data-baseweb="tab-list"]{background:#0a1628;border-radius:8px;gap:4px;padding:4px}
 .stTabs [data-baseweb="tab"]{background:transparent!important;color:#7a8fa6!important;border-radius:6px!important}
@@ -640,6 +640,7 @@ elif "Lead" in page:
                 save_lead(new_lead,is_new=not bool(existing))
                 st.session_state["_guardando"] = False
                 st.session_state["_ultimo_guardado"] = nombre
+                st.session_state["goto_lead"] = nombre
                 st.rerun()
 
     if existing:
