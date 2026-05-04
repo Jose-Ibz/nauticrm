@@ -1473,69 +1473,178 @@ elif "Archivo" in page:
 
 # ══ ASISTENTE IA ══════════════════════════════════════════════════════════════
 elif "Asistente" in page:
-    import anthropic as _anth
+    import anthropic as _anth, json as _json_chat
     st.markdown("## 💬 Asistente IA")
-    st.caption("Pregunta en lenguaje natural sobre tus leads, clientes y pipeline. Tiene acceso a todos los datos del CRM.")
+    st.caption("Pregunta en lenguaje natural sobre leads, clientes, pipeline e historial. Acceso completo a todos los datos del CRM.")
 
-    # ── Contexto de datos para el sistema ─────────────────────────────────────
+    # ── Serializar un lead completo para el contexto de la IA ─────────────────
+    def _lead_to_text(l, include_historial=True):
+        hist=l.get("historial",[])
+        hist_txt=""
+        if include_historial and hist:
+            entradas=[f"    [{h.get('fecha','')}] {h.get('tipo','')}: {h.get('nota','')}" for h in hist]
+            hist_txt=" | historial:\n"+"\n".join(entradas)
+        return (
+            f"  NOMBRE: {l.get('nombre','')} | EMPRESA: {l.get('empresa','')} | "
+            f"EMAIL: {l.get('email','')} | TEL: {l.get('telefono','')} | IDIOMA: {l.get('idioma','')} | "
+            f"BARCO: {l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')} | "
+            f"ETAPA: {l.get('etapa','')} | FUENTE: {l.get('fuenteLead','')} | "
+            f"VENDEDOR: {l.get('asignadoA','')} | "
+            f"VALOR: €{l.get('valorOperacion',0) or l.get('presupuesto',0)} | "
+            f"PROB: {l.get('probabilidad',0)}% | "
+            f"NOTAS: {l.get('usoPrevisto','')} | "
+            f"ALTA: {l.get('fechaCreacion','')} | ULT.CONTACTO: {l.get('ultimaActualizacion','')} | "
+            f"PRÓX.ACCIÓN: {l.get('proximaAccion','')} ({l.get('fechaProximaAccion','')})"
+            + hist_txt
+        )
+
     def _build_crm_context():
-        import json as _json
-        lines=[]
-        lines.append(f"HOY: {date.today()}")
-        lines.append(f"\n=== LEADS ACTIVOS ({len(all_leads_raw)}) ===")
-        for l in all_leads_raw:
-            hist_resumen=f"{len(l.get('historial',[]))} entradas" if l.get('historial') else "sin historial"
-            lines.append(
-                f"- {l.get('nombre','?')} | {l.get('empresa','')} | {l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')} | "
-                f"etapa:{l.get('etapa','')} | fuente:{l.get('fuenteLead','')} | vendedor:{l.get('asignadoA','')} | "
-                f"valor:€{l.get('valorOperacion',0) or l.get('presupuesto',0)} | idioma:{l.get('idioma','')} | "
-                f"alta:{l.get('fechaCreacion','')} | próx.acción:{l.get('proximaAccion','')} ({l.get('fechaProximaAccion','')}) | "
-                f"historial:{hist_resumen}"
-            )
+        lines=[f"FECHA HOY: {date.today()}"]
+        # Separar activos por tipo
+        _pipeline=[l for l in all_leads_raw if l.get("etapa") not in ["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"]]
+        _ganados=[l for l in all_leads_raw if l.get("etapa")=="Cerrado Ganado"]
+        _perdidos=[l for l in all_leads_raw if l.get("etapa")=="Cerrado Perdido"]
+        _pausa=[l for l in all_leads_raw if l.get("etapa")=="En Pausa / Recuperable"]
+
+        lines.append(f"\n=== PIPELINE ACTIVO ({len(_pipeline)} leads) ===")
+        for l in _pipeline: lines.append(_lead_to_text(l))
+
+        if _ganados:
+            lines.append(f"\n=== CERRADOS GANADOS EN CRM ({len(_ganados)}) ===")
+            for l in _ganados: lines.append(_lead_to_text(l))
+
+        if _perdidos:
+            lines.append(f"\n=== CERRADOS PERDIDOS ({len(_perdidos)}) ===")
+            for l in _perdidos: lines.append(_lead_to_text(l))
+
+        if _pausa:
+            lines.append(f"\n=== EN PAUSA / RECUPERABLE ({len(_pausa)}) ===")
+            for l in _pausa: lines.append(_lead_to_text(l))
+
         if archivo_frio:
             lines.append(f"\n=== ARCHIVO FRÍO ({len(archivo_frio)}) ===")
             for l in archivo_frio:
                 lines.append(
-                    f"- {l.get('nombre','?')} | {l.get('empresa','')} | {l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')} | "
-                    f"fuente:{l.get('fuenteLead','')} | archivado:{l.get('fechaArchivo','')} | motivo:{l.get('motivoArchivo','')}"
+                    f"  {l.get('nombre','')} | {l.get('empresa','')} | {l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')} | "
+                    f"fuente:{l.get('fuenteLead','')} | archivado:{l.get('fechaArchivo','')} | motivo:{l.get('motivoArchivo','')} | "
+                    f"email:{l.get('email','')} | tel:{l.get('telefono','')} | notas:{l.get('usoPrevisto','')}"
                 )
+
         if clientes_pasivos:
-            lines.append(f"\n=== CLIENTES PASIVOS / CERRADOS ({len(clientes_pasivos)}) ===")
+            lines.append(f"\n=== CLIENTES PASIVOS / COMPRAS HISTÓRICAS ({len(clientes_pasivos)}) ===")
             for l in clientes_pasivos:
                 lines.append(
-                    f"- {l.get('nombre','?')} | {l.get('empresa','')} | {l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')} | "
+                    f"  {l.get('nombre','')} | {l.get('empresa','')} | {l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')} | "
                     f"valor:€{l.get('valorOperacion',0)} | vendedor:{l.get('asignadoA','')} | "
+                    f"email:{l.get('email','')} | tel:{l.get('telefono','')} | "
                     f"cierre:{l.get('ultimaActualizacion','')} | pasivo_desde:{l.get('fechaPasivo','')}"
                 )
         return "\n".join(lines)
 
     _SYS_CHAT = (
-        "Eres el asistente de CRM de Náutica Viamar, empresa náutica en Ibiza especializada en venta de barcos. "
-        "Tienes acceso completo a los datos del pipeline de ventas. Responde siempre en español, de forma concisa y estructurada. "
-        "Cuando hagas listados usa tablas markdown o listas con viñetas. "
-        "Si te preguntan por modelos de barco, busca en los campos tipoEmbarcacion y modeloEslora. "
-        "Fuentes de leads incluyen ferias (Feria Náutica, salones náuticos) y otras fuentes comerciales. "
-        "Las etapas del pipeline son: Prospecto → Contactado → Interés Confirmado → Propuesta Enviada → Negociación → Cerrado Ganado/Perdido/En Pausa. "
-        "Los leads en Archivo Frío son contactos descartados; los Clientes Pasivos son compradores históricos sin actividad comercial activa.\n\n"
+        "Eres el asistente CRM de Náutica Viamar, empresa náutica en Ibiza especializada en venta de barcos de motor, vela y catamarán. "
+        "Tienes acceso completo a TODOS los datos del CRM: pipeline activo, cerrados ganados/perdidos, leads en pausa, archivo frío y clientes pasivos históricos. "
+        "Responde SIEMPRE en español, de forma concisa y estructurada. Usa tablas markdown para listados. "
+        "Cuando busques modelos de barco, busca tanto en tipoEmbarcacion como en modeloEslora y también en las notas (campo NOTAS). "
+        "Fuente 'Feria Náutica' o 'Salón' = captado en feria/salón náutico. "
+        "El pipeline es: Prospecto → Contactado → Interés Confirmado → Propuesta Enviada → Negociación → Cerrado Ganado/Perdido. "
+        "Los cerrados perdidos y archivo frío pueden reactivarse. Los clientes pasivos compraron y ya no están en seguimiento activo. "
+        "Puedes calcular estadísticas, hacer conteos, buscar por cualquier campo incluyendo notas e historial de actividad.\n\n"
         + _build_crm_context()
     )
+
+    # ── Exportación JSON completa ──────────────────────────────────────────────
+    def _build_export_json():
+        def _map_lead(l, tipo):
+            hist=l.get("historial",[])
+            return {
+                "tipo": tipo,
+                "id": l.get("id",""),
+                "nombre": l.get("nombre",""),
+                "empresa": l.get("empresa",""),
+                "email": l.get("email",""),
+                "telefono": l.get("telefono",""),
+                "idioma": l.get("idioma",""),
+                "tipoEmbarcacion": l.get("tipoEmbarcacion",""),
+                "modeloEslora": l.get("modeloEslora",""),
+                "notasInternas": l.get("usoPrevisto",""),
+                "etapa": l.get("etapa",""),
+                "fuente": l.get("fuenteLead",""),
+                "vendedorAsignado": l.get("asignadoA",""),
+                "valorEstimado": l.get("valorOperacion",0) or l.get("presupuesto",0),
+                "probabilidadCierre": l.get("probabilidad",0),
+                "fechaAlta": l.get("fechaCreacion",""),
+                "fechaUltimoContacto": l.get("ultimaActualizacion",""),
+                "proximaAccion": l.get("proximaAccion",""),
+                "fechaProximaAccion": l.get("fechaProximaAccion",""),
+                "historialCompleto": [
+                    {"fecha": h.get("fecha",""), "tipo": h.get("tipo",""), "nota": h.get("nota","")}
+                    for h in hist
+                ],
+                "fechaArchivo": l.get("fechaArchivo",""),
+                "motivoArchivo": l.get("motivoArchivo",""),
+                "fechaPasivo": l.get("fechaPasivo",""),
+            }
+        _pipeline=[l for l in all_leads_raw if l.get("etapa") not in ["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"]]
+        _ganados=[l for l in all_leads_raw if l.get("etapa")=="Cerrado Ganado"]
+        _perdidos=[l for l in all_leads_raw if l.get("etapa")=="Cerrado Perdido"]
+        _pausa=[l for l in all_leads_raw if l.get("etapa")=="En Pausa / Recuperable"]
+        todos=(
+            [_map_lead(l,"pipeline_activo") for l in _pipeline]+
+            [_map_lead(l,"cerrado_ganado") for l in _ganados]+
+            [_map_lead(l,"cerrado_perdido") for l in _perdidos]+
+            [_map_lead(l,"en_pausa") for l in _pausa]+
+            [_map_lead(l,"archivo_frio") for l in archivo_frio]+
+            [_map_lead(l,"cliente_pasivo") for l in clientes_pasivos]
+        )
+        export={
+            "exportacion":{
+                "fuente":"NautiCRM - Náutica Viamar",
+                "fecha": str(date.today()),
+                "total_registros": len(todos),
+                "desglose":{
+                    "pipeline_activo":len(_pipeline),
+                    "cerrado_ganado":len(_ganados),
+                    "cerrado_perdido":len(_perdidos),
+                    "en_pausa":len(_pausa),
+                    "archivo_frio":len(archivo_frio),
+                    "clientes_pasivos":len(clientes_pasivos),
+                },
+                "campos_no_implementados": ["apellidos","telefonoSecundario","documentosAdjuntos","zonaNavegacion","barcoActual","financiacion","urgencia"]
+            },
+            "registros": todos
+        }
+        return _json_chat.dumps(export, ensure_ascii=False, indent=2)
+
+    # ── UI ─────────────────────────────────────────────────────────────────────
+    _total_reg = len(all_leads_raw) + len(archivo_frio) + len(clientes_pasivos)
+    _c1, _c2, _c3 = st.columns([4,2,2])
+    _c1.markdown(f"<div style='padding:8px 0;font-size:0.85rem;color:#7a8fa6'>📊 <b style='color:#e8e0d0'>{_total_reg}</b> registros totales en el CRM</div>", unsafe_allow_html=True)
+    with _c2:
+        _export_json = _build_export_json()
+        st.download_button(
+            "⬇️ Exportar JSON completo",
+            data=_export_json.encode("utf-8"),
+            file_name=f"nauticrm_export_{date.today()}.json",
+            mime="application/json",
+            use_container_width=True,
+            help="Descarga todos los datos del CRM para usar con Claude u otros asistentes IA"
+        )
+    with _c3:
+        if st.button("🗑️ Nueva conversación", use_container_width=True):
+            st.session_state["chat_ia"] = []; st.rerun()
+
+    st.markdown("---")
 
     # ── Historial de chat ──────────────────────────────────────────────────────
     if "chat_ia" not in st.session_state:
         st.session_state["chat_ia"] = []
 
-    col_h, col_btn = st.columns([6,1])
-    with col_btn:
-        if st.button("🗑️ Limpiar", use_container_width=True):
-            st.session_state["chat_ia"] = []; st.rerun()
-
-    # Mostrar historial
     for msg in st.session_state["chat_ia"]:
         with st.chat_message(msg["role"], avatar="🧑‍💼" if msg["role"]=="user" else "🤖"):
             st.markdown(msg["content"])
 
-    # Input del usuario
-    if _pregunta := st.chat_input("Ej: ¿Quién quería un Sasga? ¿Cuántos leads cogimos en el salón de Palma?"):
+    if _pregunta := st.chat_input("Ej: ¿Quién quería un Sasga? ¿Cuántos leads del salón de Palma? ¿Qué clientes hablan francés?"):
         st.session_state["chat_ia"].append({"role":"user","content":_pregunta})
         with st.chat_message("user", avatar="🧑‍💼"):
             st.markdown(_pregunta)
@@ -1547,7 +1656,7 @@ elif "Asistente" in page:
                     _messages_api = [{"role": m["role"], "content": m["content"]} for m in st.session_state["chat_ia"]]
                     _resp = _client_chat.messages.create(
                         model="claude-opus-4-5",
-                        max_tokens=1500,
+                        max_tokens=2000,
                         system=_SYS_CHAT,
                         messages=_messages_api
                     )
