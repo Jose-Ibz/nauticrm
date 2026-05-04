@@ -951,8 +951,12 @@ elif "Lead" in page:
         # ── Ficha imprimible ──────────────────────────────────────────────────
         st.markdown("---")
         if st.button("🖨️ Ver ficha para imprimir", use_container_width=True, key="toggle_ficha"):
-            st.session_state["show_ficha"] = not st.session_state.get("show_ficha", False)
-        if st.session_state.get("show_ficha"):
+            _ficha_abierta = st.session_state.get("show_ficha_lead")
+            if _ficha_abierta == existing["id"]:
+                st.session_state["show_ficha_lead"] = None
+            else:
+                st.session_state["show_ficha_lead"] = existing["id"]
+        if st.session_state.get("show_ficha_lead") == existing["id"]:
             def _ficha_html(l):
                 _hist_rows="".join(f"""<tr><td style='padding:6px 10px;color:#555;font-size:12px;white-space:nowrap;border-bottom:1px solid #eee'>{h['fecha']}</td>
                     <td style='padding:6px 10px;font-size:12px;border-bottom:1px solid #eee'><span style='background:#2563eb;color:white;border-radius:3px;padding:2px 8px;font-size:11px;font-weight:700'>{h['tipo']}</span></td>
