@@ -646,13 +646,24 @@ elif "Lead" in page:
         _a1, _a2 = st.columns([1, 3])
         _act_tipo = _a1.selectbox("Tipo de contacto", ["Email","Llamada","Reunión","WhatsApp","Nota"], key="act_tipo")
         _act_nota = _a2.text_area("Descripción", placeholder="Qué se dijo, qué se envió, qué contestó el lead...", height=90, key="act_nota", label_visibility="collapsed")
-        if st.button("➕ Registrar actividad", use_container_width=True):
+        st.markdown("<div style='color:#7a8fa6;font-size:0.75rem;margin:6px 0 2px'>↳ Próximo paso (opcional)</div>", unsafe_allow_html=True)
+        _b1, _b2 = st.columns([3, 1])
+        _prox_a = _b1.text_input("Próxima acción", value=existing.get("proximaAccion",""), placeholder="Ej: Llamada de seguimiento, Enviar contrato...", key="act_prox_a", label_visibility="collapsed")
+        try:    _prox_d_def = datetime.strptime(str(existing.get("fechaProximaAccion","")), "%Y-%m-%d").date()
+        except: _prox_d_def = date.today() + timedelta(days=7)
+        _prox_d = _b2.date_input("Fecha", value=_prox_d_def, key="act_prox_d", label_visibility="collapsed")
+        if st.button("➕ Registrar actividad y actualizar plan", use_container_width=True):
             if not _act_nota.strip():
                 st.warning("Escribe la descripción antes de registrar.")
             else:
                 _hist = existing.get("historial", []).copy()
                 _hist.append({"fecha": str(date.today()), "tipo": _act_tipo, "nota": _act_nota.strip()})
-                save_lead({**existing, "historial": _hist, "ultimaActualizacion": str(date.today())}, is_new=False)
+                _upd = {**existing, "historial": _hist, "ultimaActualizacion": str(date.today())}
+                if _prox_a.strip():
+                    _upd["proximaAccion"]      = _prox_a.strip()
+                    _upd["fechaProximaAccion"] = str(_prox_d)
+                save_lead(_upd, is_new=False)
+                st.session_state["nav_page"] = "📅 Próximas Acciones"
                 st.rerun()
 
         # ── Historial de comunicaciones ───────────────────────────────────────
