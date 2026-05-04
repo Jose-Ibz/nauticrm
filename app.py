@@ -754,41 +754,13 @@ Sé directo, usa datos concretos del informe y enfócate en lo accionable. Forma
                         _doc.build(_elems)
                         return _buf.getvalue()
 
-                    def _to_docx(txt):
-                        import os as _os
-                        from docx import Document
-                        from docx.shared import Pt, RGBColor, Cm
-                        _doc2=Document(); _doc2.core_properties.author="NautiCRM"
-                        _logo_path=_os.path.join(_os.path.dirname(_os.path.abspath(__file__)),"logo_viamar.jpg")
-                        if _os.path.exists(_logo_path):
-                            try: _doc2.add_picture(_logo_path,width=Cm(5))
-                            except Exception: pass
-                        _h=_doc2.add_heading("NautiCRM — Informe IA",0)
-                        _h.runs[0].font.color.rgb=RGBColor(0xC9,0xA8,0x4C)
-                        _doc2.add_paragraph(f"Generado: {date.today().strftime('%d/%m/%Y')}")
-                        def _add_run(para,line):
-                            for _i,_p in enumerate(_re.split(r'\*\*(.*?)\*\*',line)):
-                                _r=para.add_run(_p); _r.bold=(_i%2==1)
-                        for _ln in txt.split("\n"):
-                            _ln=_ln.strip()
-                            if not _ln: _doc2.add_paragraph(""); continue
-                            if _ln.startswith("## "): _doc2.add_heading(_ln[3:],level=1)
-                            elif _ln.startswith("### "): _doc2.add_heading(_ln[4:],level=2)
-                            elif _ln.startswith(("- ","* ")): _add_run(_doc2.add_paragraph(style="List Bullet"),_ln[2:])
-                            else: _add_run(_doc2.add_paragraph(),_ln)
-                        _buf2=_io_ia.BytesIO(); _doc2.save(_buf2); return _buf2.getvalue()
-
                     _fname=f"informe_ia_{date.today()}"
-                    _dc1,_dc2,_dc3=st.columns(3)
+                    _dc1,_dc2=st.columns(2)
                     _dc1.download_button("⬇️ Descargar TXT",data=_informe.encode("utf-8"),file_name=f"{_fname}.txt",mime="text/plain",use_container_width=True)
                     try:
-                        _dc2.download_button("⬇️ Descargar Word",data=_to_docx(_informe),file_name=f"{_fname}.docx",mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",use_container_width=True)
-                    except Exception as _ex2:
-                        _dc2.warning(f"Word no disponible: {_ex2}")
-                    try:
-                        _dc3.download_button("⬇️ Descargar PDF",data=_to_pdf(_informe),file_name=f"{_fname}.pdf",mime="application/pdf",use_container_width=True)
+                        _dc2.download_button("⬇️ Descargar PDF",data=_to_pdf(_informe),file_name=f"{_fname}.pdf",mime="application/pdf",use_container_width=True)
                     except Exception as _ex3:
-                        _dc3.warning(f"PDF no disponible: {_ex3}")
+                        _dc2.warning(f"PDF no disponible: {_ex3}")
                 except Exception as _e:
                     st.error(f"Error al generar el informe: {_e}")
 
