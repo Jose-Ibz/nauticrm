@@ -695,9 +695,81 @@ Sé directo, usa datos concretos del informe y enfócate en lo accionable. Forma
                     st.markdown("---")
                     st.markdown(_informe)
                     st.markdown("---")
-                    import io as _io_ia
-                    st.download_button("⬇️ Descargar informe .txt",data=_informe.encode("utf-8"),
-                        file_name=f"informe_ia_{date.today()}.txt",mime="text/plain")
+                    import io as _io_ia, re as _re
+
+                    def _to_pdf(txt):
+                        import os as _os
+                        from reportlab.lib.pagesizes import A4
+                        from reportlab.lib import colors as _rc
+                        from reportlab.lib.units import cm
+                        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as _RLImage, HRFlowable
+                        from reportlab.lib.styles import ParagraphStyle
+                        _buf=_io_ia.BytesIO()
+                        _doc=SimpleDocTemplate(_buf,pagesize=A4,leftMargin=2*cm,rightMargin=2*cm,topMargin=2*cm,bottomMargin=2*cm)
+                        _GOLD=_rc.HexColor("#C9A84C"); _BLUE=_rc.HexColor("#2563eb"); _DARK=_rc.HexColor("#111111")
+                        _s_tit=ParagraphStyle("t",fontName="Helvetica-Bold",fontSize=17,textColor=_GOLD,spaceAfter=4)
+                        _s_sub=ParagraphStyle("s",fontName="Helvetica",fontSize=9,textColor=_rc.HexColor("#555555"),spaceAfter=10)
+                        _s_h1=ParagraphStyle("h1",fontName="Helvetica-Bold",fontSize=13,textColor=_GOLD,spaceBefore=14,spaceAfter=5)
+                        _s_h2=ParagraphStyle("h2",fontName="Helvetica-Bold",fontSize=11,textColor=_BLUE,spaceBefore=10,spaceAfter=4)
+                        _s_body=ParagraphStyle("b",fontName="Helvetica",fontSize=10,textColor=_DARK,spaceAfter=4,leading=14)
+                        _s_bull=ParagraphStyle("bl",fontName="Helvetica",fontSize=10,textColor=_DARK,spaceAfter=3,leftIndent=14,leading=13)
+                        _logo_path=_os.path.join(_os.path.dirname(_os.path.abspath(__file__)),"logo_viamar.jpg")
+                        _elems=[]
+                        if _os.path.exists(_logo_path):
+                            try:
+                                _img=_RLImage(_logo_path,width=5*cm,height=1.6*cm,kind="proportional")
+                                _elems.append(_img)
+                                _elems.append(Spacer(1,0.3*cm))
+                            except Exception: pass
+                        _elems+=[Paragraph("NautiCRM — Informe IA",_s_tit),
+                                Paragraph(f"Generado: {date.today().strftime('%d/%m/%Y')}",_s_sub),
+                                HRFlowable(width="100%",thickness=1,color=_GOLD,spaceAfter=10)]
+                        for _ln in txt.split("\n"):
+                            _ln=_ln.strip()
+                            if not _ln: _elems.append(Spacer(1,0.18*cm)); continue
+                            def _bold(_t): return _re.sub(r'\*\*(.*?)\*\*',r'<b>\1</b>',_t)
+                            if _ln.startswith("## "): _elems.append(Paragraph(_ln[3:],_s_h1))
+                            elif _ln.startswith("### "): _elems.append(Paragraph(_ln[4:],_s_h2))
+                            elif _ln.startswith(("- ","* ")): _elems.append(Paragraph("• "+_bold(_ln[2:]),_s_bull))
+                            else: _elems.append(Paragraph(_bold(_ln),_s_body))
+                        _doc.build(_elems)
+                        return _buf.getvalue()
+
+                    def _to_docx(txt):
+                        import os as _os
+                        from docx import Document
+                        from docx.shared import Pt, RGBColor, Cm
+                        _doc2=Document(); _doc2.core_properties.author="NautiCRM"
+                        _logo_path=_os.path.join(_os.path.dirname(_os.path.abspath(__file__)),"logo_viamar.jpg")
+                        if _os.path.exists(_logo_path):
+                            try: _doc2.add_picture(_logo_path,width=Cm(5))
+                            except Exception: pass
+                        _h=_doc2.add_heading("NautiCRM — Informe IA",0)
+                        _h.runs[0].font.color.rgb=RGBColor(0xC9,0xA8,0x4C)
+                        _doc2.add_paragraph(f"Generado: {date.today().strftime('%d/%m/%Y')}")
+                        def _add_run(para,line):
+                            for _i,_p in enumerate(_re.split(r'\*\*(.*?)\*\*',line)):
+                                _r=para.add_run(_p); _r.bold=(_i%2==1)
+                        for _ln in txt.split("\n"):
+                            _ln=_ln.strip()
+                            if not _ln: _doc2.add_paragraph(""); continue
+                            if _ln.startswith("## "): _doc2.add_heading(_ln[3:],level=1)
+                            elif _ln.startswith("### "): _doc2.add_heading(_ln[4:],level=2)
+                            elif _ln.startswith(("- ","* ")): _add_run(_doc2.add_paragraph(style="List Bullet"),_ln[2:])
+                            else: _add_run(_doc2.add_paragraph(),_ln)
+                        _buf2=_io_ia.BytesIO(); _doc2.save(_buf2); return _buf2.getvalue()
+
+                    _fname=f"informe_ia_{date.today()}"
+                    _dc1,_dc2,_dc3=st.columns(3)
+                    _dc1.download_button("⬇️ Descargar TXT",data=_informe.encode("utf-8"),file_name=f"{_fname}.txt",mime="text/plain",use_container_width=True)
+                    try:
+                        _dc2.download_button("⬇️ Descargar Word",data=_to_docx(_informe),file_name=f"{_fname}.docx",mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",use_container_width=True)
+                    except Exception as _ex2:
+                        _dc2.warning(f"Word no disponible: {_ex2}")
+                    try:
+                        _dc3.download_button("⬇️ Descargar PDF",data=_to_pdf(_informe),file_name=f"{_fname}.pdf",mime="application/pdf",use_container_width=True)
+                    except Exception as _ex3:
+                        _dc3.warning(f"PDF no disponible: {_ex3}")
                 except Exception as _e:
                     st.error(f"Error al generar el informe: {_e}")
 
