@@ -1112,10 +1112,15 @@ Sé directo, usa datos concretos del informe y enfócate en lo accionable. Forma
                 try:
                     import anthropic as _anthropic
                     _client=_anthropic.Anthropic(api_key=st.secrets["anthropic_api_key"])
+                    # Separar contexto de datos (system, cacheable) de las instrucciones (user)
+                    _split = _prompt.split("## INSTRUCCIONES", 1)
+                    _sys_inf  = _split[0].strip()
+                    _user_inf = ("## INSTRUCCIONES" + _split[1]) if len(_split) > 1 else _prompt
                     _msg=_client.messages.create(
                         model="claude-opus-4-5",
                         max_tokens=2000,
-                        messages=[{"role":"user","content":_prompt}]
+                        system=[{"type":"text","text":_sys_inf,"cache_control":{"type":"ephemeral"}}],
+                        messages=[{"role":"user","content":_user_inf}]
                     )
                     _informe=_msg.content[0].text
                     st.markdown("---")
@@ -1871,7 +1876,7 @@ elif "Asistente" in page:
                 )
         return "\n".join(lines)
 
-    _SYS_CHAT = (
+    _SYS_BASE = (
         "Eres el asistente CRM de Náutica Viamar, empresa náutica en Ibiza especializada en venta de barcos de motor, vela y catamarán. "
         "Tienes acceso completo a TODOS los datos del CRM: pipeline activo, cerrados ganados/perdidos, leads en pausa, archivo frío y clientes pasivos históricos. "
         "Responde SIEMPRE en español, de forma concisa y estructurada. Usa tablas markdown para listados. "
@@ -1880,8 +1885,13 @@ elif "Asistente" in page:
         "El pipeline es: Prospecto → Contactado → Interés Confirmado → Propuesta Enviada → Negociación → Cerrado Ganado/Perdido. "
         "Los cerrados perdidos y archivo frío pueden reactivarse. Los clientes pasivos compraron y ya no están en seguimiento activo. "
         "Puedes calcular estadísticas, hacer conteos, buscar por cualquier campo incluyendo notas e historial de actividad.\n\n"
-        + _build_crm_context()
     )
+    # Cachear el contexto CRM en session_state: solo se reconstruye si cambia el nº de leads
+    _ctx_key = f"chat_ctx_{len(all_leads_raw)}_{len(archivo_frio)}_{len(clientes_pasivos)}"
+    if st.session_state.get("_chat_ctx_key") != _ctx_key:
+        st.session_state["_chat_ctx"]     = _build_crm_context()
+        st.session_state["_chat_ctx_key"] = _ctx_key
+    _SYS_CHAT = _SYS_BASE + st.session_state["_chat_ctx"]
 
     # ── Exportación JSON completa ──────────────────────────────────────────────
     def _build_export_json():
@@ -1982,11 +1992,13 @@ elif "Asistente" in page:
             with st.spinner("Consultando datos..."):
                 try:
                     _client_chat = _anth.Anthropic(api_key=st.secrets["anthropic_api_key"])
-                    _messages_api = [{"role": m["role"], "content": m["content"]} for m in st.session_state["chat_ia"]]
+                    # Máximo 20 mensajes para evitar contexto desbordado
+                    _msgs_recientes = st.session_state["chat_ia"][-20:]
+                    _messages_api = [{"role": m["role"], "content": m["content"]} for m in _msgs_recientes]
                     _resp = _client_chat.messages.create(
                         model="claude-opus-4-5",
                         max_tokens=2000,
-                        system=_SYS_CHAT,
+                        system=[{"type":"text","text":_SYS_CHAT,"cache_control":{"type":"ephemeral"}}],
                         messages=_messages_api
                     )
                     _respuesta = _resp.content[0].text
