@@ -706,8 +706,11 @@ Por mes: {', '.join(f"{k}: {v}" for k,v in sorted(_act_por_mes.items()))}
 }.items())))}
 
 
-### Leads activos — detalle (etapa, alta, interacciones registradas, próxima acción)
-{chr(10).join(f"- {l['nombre']} | {l['etapa']} | alta:{l.get('fechaCreacion','?')} | interacciones:{len(l.get('historial',[]))} | próx.acción:{l.get('proximaAccion','—')} ({l.get('fechaProximaAccion','sin fecha')})" for l in _leads_ia if l['etapa'] not in ['Cerrado Ganado','Cerrado Perdido','En Pausa / Recuperable'])[:30]}
+### Leads activos — detalle (etapa, alta, días en etapa actual, próxima acción)
+{chr(10).join((lambda _dias_etapa, _pf: f"- {l['nombre']} | {l['etapa']} | alta:{l.get('fechaCreacion','?')} | días_en_etapa:{_dias_etapa} | próx.acción:{l.get('proximaAccion','—')} ({l.get('fechaProximaAccion','sin fecha')}) | {'⚠️ sin plan' if not _pf and _dias_etapa>21 else '✅ con plan' if _pf else '🕐 reciente'}")(
+    days_since(next((h["fecha"] for h in reversed(l.get("historial",[])) if h.get("tipo")=="Cambio etapa" and l["etapa"] in h.get("nota","")), l.get("ultimaActualizacion") or l.get("fechaCreacion",""))),
+    (lambda s: (lambda d: d>=date.today())(datetime.strptime(s,"%Y-%m-%d").date()) if s else False)(l.get("fechaProximaAccion","")))
+    for l in _leads_ia if l['etapa'] not in ['Cerrado Ganado','Cerrado Perdido','En Pausa / Recuperable'])[:35]}
 
 ### Alertas
 - Leads sin actividad ni plan (alta >14 días, sin historial y sin próxima acción) ({len(_sin_actividad)}): {', '.join(_sin_actividad[:10])}{'...' if len(_sin_actividad)>10 else ''}
@@ -724,7 +727,12 @@ Genera un informe completo en español con estas secciones:
 4. **Alertas y riesgos** (leads en riesgo, estancamientos, oportunidades perdidas)
 5. **Recomendaciones concretas** (mínimo 5 acciones específicas y prioritarias)
 
-IMPORTANTE: Un lead recién captado (especialmente de feria o salón náutico) con próxima acción planificada NO es un lead abandonado, aunque no tenga interacciones registradas en el historial — el contacto en persona es el primer paso. No lo marques como problema si tiene una fecha de próxima acción futura o fue dado de alta hace menos de 14 días.
+CONTEXTO DEL CICLO COMERCIAL NÁUTICO (aplícalo siempre al interpretar los datos):
+- Vender una embarcación de recreo es un proceso largo: desde el primer contacto hasta cerrar pueden pasar semanas o meses.
+- "Propuesta Enviada" NO significa estancamiento: si el lead lleva menos de 21 días en esa etapa, o tiene una próxima acción futura planificada, está en proceso normal. Solo marca alerta si lleva más de 30 días sin ningún movimiento ni plan.
+- "Interés Confirmado" puede durar semanas mientras el cliente evalúa opciones, consulta financiación o espera la temporada.
+- Leads recién captados (menos de 14 días) o con próxima acción futura planificada NO son abandonados, aunque no tengan historial escrito — el campo "días_en_etapa" y "próx.acción" del detalle son la referencia real.
+- Usa el campo "días_en_etapa" para calibrar cada alerta: un lead en Propuesta Enviada con 5 días y acción futura es una oportunidad activa, no un problema.
 
 Sé directo, usa datos concretos del informe y enfócate en lo accionable. Formato markdown."""
 
