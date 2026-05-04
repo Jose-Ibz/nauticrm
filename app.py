@@ -810,44 +810,76 @@ Sé directo, usa datos concretos del informe y enfócate en lo accionable. Forma
 
     with tab5:
         st.markdown("#### 📖 Diario de actividad")
-        _dcol1,_dcol2,_dcol3=st.columns(3)
+        _dcol1,_dcol2,_dcol3=st.columns([1,1,2])
         _diario_desde=_dcol1.date_input("Desde",value=date.today()-timedelta(days=30),key="diario_desde")
         _diario_hasta=_dcol2.date_input("Hasta",value=date.today(),key="diario_hasta")
         _TIPOS_DIARIO=["Alta","Cambio etapa","Email","Llamada","Reunión","WhatsApp","Nota","Cierre perdido","Pausa"]
-        _diario_filtro=_dcol3.multiselect("Tipo",_TIPOS_DIARIO,default=[],key="diario_tipos",placeholder="Todos los tipos")
+        _TIPO_ICONO={"Alta":"🆕","Cambio etapa":"🔄","Email":"📧","Llamada":"📞","Reunión":"🤝","WhatsApp":"💬","Nota":"📝","Cierre perdido":"❌","Pausa":"⏸️"}
+        _TIPO_COLOR={"Alta":"#16a34a","Cambio etapa":"#c9a84c","Email":"#2563eb","Llamada":"#0891b2",
+                     "Reunión":"#7c3aed","WhatsApp":"#25d366","Nota":"#b8860b","Cierre perdido":"#dc2626","Pausa":"#6b7280"}
+        _diario_filtro=_dcol3.multiselect("Filtrar por tipo",_TIPOS_DIARIO,default=[],key="diario_tipos",placeholder="Todos los tipos")
         # Construir eventos
         _eventos=[]
         for _l in all_leads_raw:
             if _l.get("fechaCreacion"):
+                _desc=f"{_l.get('tipoEmbarcacion','')} {_l.get('modeloEslora','')}".strip()
+                _desc=f"{_desc} · {_l.get('fuenteLead','')}" if _l.get('fuenteLead') else _desc
                 _eventos.append({"fecha":_l["fechaCreacion"],"tipo":"Alta","lead":_l["nombre"],
-                    "nota":f"Lead captado · {_l.get('fuenteLead','—')} · {_l.get('tipoEmbarcacion','')} {_l.get('modeloEslora','')}".strip(" ·"),
-                    "etapa":_l["etapa"]})
+                    "empresa":_l.get("empresa",""),"nota":_desc or "—","etapa":_l["etapa"]})
             for _h in _l.get("historial",[]):
                 _eventos.append({"fecha":_h["fecha"],"tipo":_h["tipo"],"lead":_l["nombre"],
-                    "nota":_h["nota"],"etapa":_l["etapa"]})
-        # Filtrar por fechas y tipo
+                    "empresa":_l.get("empresa",""),"nota":_h["nota"],"etapa":_l["etapa"]})
         _eventos=[e for e in _eventos
             if str(_diario_desde)<=e["fecha"]<=str(_diario_hasta)
             and (not _diario_filtro or e["tipo"] in _diario_filtro)]
         _eventos.sort(key=lambda e:e["fecha"],reverse=True)
-        st.caption(f"{len(_eventos)} eventos en el período")
-        TIPO_COLOR_D={"Alta":"#16a34a","Cambio etapa":"#c9a84c","Email":"#2563eb","Llamada":"#16a34a",
-                      "Reunión":"#7c3aed","WhatsApp":"#25d366","Nota":"#c9a84c","Cierre perdido":"#dc2626","Pausa":"#374151"}
+        # Contadores resumen
+        _res={}
+        for _e in _eventos: _res[_e["tipo"]]=_res.get(_e["tipo"],0)+1
+        if _res:
+            _rcols=st.columns(min(len(_res),5))
+            for _i,(_t,_n) in enumerate(sorted(_res.items(),key=lambda x:-x[1])[:5]):
+                _rcols[_i].metric(f"{_TIPO_ICONO.get(_t,'•')} {_t}",_n)
+        st.markdown("<br>",unsafe_allow_html=True)
+        # Timeline
         _fecha_actual=None
         for _ev in _eventos:
             if _ev["fecha"]!=_fecha_actual:
                 _fecha_actual=_ev["fecha"]
-                try: _fecha_fmt=datetime.strptime(_fecha_actual,"%Y-%m-%d").strftime("%A %d %B %Y").capitalize()
-                except: _fecha_fmt=_fecha_actual
-                st.markdown(f"<div style='color:#c9a84c;font-size:0.78rem;font-weight:700;margin:14px 0 4px;text-transform:uppercase;letter-spacing:.6px'>{_fecha_fmt}</div>",unsafe_allow_html=True)
-            _col=TIPO_COLOR_D.get(_ev["tipo"],"#7a8fa6")
-            st.markdown(f"""<div style='background:#091220;border:1px solid #1a3050;border-left:3px solid {_col};border-radius:6px;padding:8px 14px;margin-bottom:5px;display:flex;gap:12px;align-items:flex-start'>
-                <span style='background:{_col};color:white;border-radius:3px;padding:2px 8px;font-size:0.68rem;font-weight:700;white-space:nowrap;flex-shrink:0'>{_ev['tipo']}</span>
-                <span style='color:#c9a84c;font-size:0.82rem;font-weight:700;flex-shrink:0'>{_ev['lead']}</span>
-                <span style='color:#e8e0d0;font-size:0.82rem'>{_ev['nota']}</span>
+                try:
+                    _dt=datetime.strptime(_fecha_actual,"%Y-%m-%d")
+                    _dias=( date.today()-_dt.date()).days
+                    _relativo="Hoy" if _dias==0 else "Ayer" if _dias==1 else f"Hace {_dias} días"
+                    _fecha_fmt=_dt.strftime("%A %d de %B").capitalize()
+                except: _fecha_fmt=_fecha_actual; _relativo=""
+                st.markdown(f"""<div style='display:flex;align-items:center;gap:12px;margin:20px 0 8px'>
+                    <div style='height:1px;flex:1;background:#1a3050'></div>
+                    <div style='background:#0d1e35;border:1px solid #1a3050;border-radius:20px;padding:4px 16px;display:flex;gap:10px;align-items:center'>
+                        <span style='color:#c9a84c;font-size:0.78rem;font-weight:700'>{_fecha_fmt}</span>
+                        <span style='color:#4a5568;font-size:0.72rem'>{_relativo}</span>
+                    </div>
+                    <div style='height:1px;flex:1;background:#1a3050'></div>
+                </div>""",unsafe_allow_html=True)
+            _col=_TIPO_COLOR.get(_ev["tipo"],"#7a8fa6")
+            _ico=_TIPO_ICONO.get(_ev["tipo"],"•")
+            _etapa_badge=f"<span style='background:#1a3050;color:#7a8fa6;border-radius:3px;padding:1px 7px;font-size:0.65rem;margin-left:6px'>{_ev['etapa']}</span>" if _ev.get("etapa") else ""
+            st.markdown(f"""<div style='display:flex;gap:0;margin-bottom:6px'>
+                <div style='display:flex;flex-direction:column;align-items:center;margin-right:14px'>
+                    <div style='width:36px;height:36px;border-radius:50%;background:{_col}22;border:2px solid {_col};display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0'>{_ico}</div>
+                    <div style='width:2px;background:#1a3050;flex:1;min-height:8px;margin-top:3px'></div>
+                </div>
+                <div style='background:#091220;border:1px solid #1a3050;border-radius:8px;padding:10px 14px;flex:1;margin-bottom:2px'>
+                    <div style='display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:4px'>
+                        <span style='background:{_col};color:white;border-radius:4px;padding:2px 9px;font-size:0.68rem;font-weight:700'>{_ev['tipo']}</span>
+                        <span style='color:#e8e0d0;font-size:0.85rem;font-weight:700'>{_ev['lead']}</span>
+                        {(f"<span style='color:#7a8fa6;font-size:0.75rem'>· {_ev['empresa']}</span>") if _ev.get('empresa') else ''}
+                        {_etapa_badge}
+                    </div>
+                    <div style='color:#b0bec5;font-size:0.82rem;line-height:1.5'>{_ev['nota']}</div>
+                </div>
             </div>""",unsafe_allow_html=True)
         if not _eventos:
-            st.info("Sin eventos en el período seleccionado.")
+            st.markdown("<div style='text-align:center;padding:40px;color:#4a5568'>Sin eventos en el período seleccionado.</div>",unsafe_allow_html=True)
 
     st.markdown("---")
     csv_inf=pd.DataFrame([{k:v for k,v in l.items() if k!="historial"} for l in all_leads_raw]).to_csv(index=False).encode("utf-8")
