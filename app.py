@@ -604,7 +604,7 @@ elif "Lead" in page:
         st.success(f"✅ Lead **{st.session_state['_ultimo_guardado']}** guardado correctamente.")
         st.session_state["_ultimo_guardado"] = None
 
-    with st.form("lead_form"):
+    with st.form(f"lead_form_{d.get('id','new')}"):
         st.markdown("### 👤 Datos de Contacto")
         c1,c2,c3=st.columns(3)
         nombre =c1.text_input("Nombre *",value=d.get("nombre",""))
