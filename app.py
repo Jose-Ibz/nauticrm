@@ -934,45 +934,69 @@ elif "Lead" in page:
 
         # ── Ficha imprimible ──────────────────────────────────────────────────
         st.markdown("---")
-        def _ficha_html(l):
-            _hist_rows="".join(f"""<tr><td style='padding:5px 10px;color:#555;font-size:12px;white-space:nowrap'>{h['fecha']}</td>
-                <td style='padding:5px 10px;font-size:12px'><span style='background:#2563eb;color:white;border-radius:3px;padding:1px 6px;font-size:11px'>{h['tipo']}</span></td>
-                <td style='padding:5px 10px;font-size:12px'>{h['nota']}</td></tr>""" for h in reversed(l.get("historial",[]))
-            ) or "<tr><td colspan='3' style='padding:8px 10px;color:#999;font-size:12px'>Sin actividad registrada</td></tr>"
-            _prox=f"{l.get('proximaAccion','')} &nbsp;·&nbsp; <b>{l.get('fechaProximaAccion','')}</b>" if l.get("proximaAccion") else "—"
-            return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-<title>Ficha {l['nombre']}</title>
+        if st.button("🖨️ Ver ficha para imprimir", use_container_width=True, key="toggle_ficha"):
+            st.session_state["show_ficha"] = not st.session_state.get("show_ficha", False)
+        if st.session_state.get("show_ficha"):
+            def _ficha_html(l):
+                _hist_rows="".join(f"""<tr><td style='padding:6px 10px;color:#555;font-size:12px;white-space:nowrap;border-bottom:1px solid #eee'>{h['fecha']}</td>
+                    <td style='padding:6px 10px;font-size:12px;border-bottom:1px solid #eee'><span style='background:#2563eb;color:white;border-radius:3px;padding:2px 8px;font-size:11px;font-weight:700'>{h['tipo']}</span></td>
+                    <td style='padding:6px 10px;font-size:12px;border-bottom:1px solid #eee'>{h['nota']}</td></tr>""" for h in reversed(l.get("historial",[]))
+                ) or "<tr><td colspan='3' style='padding:8px 10px;color:#999;font-size:12px;font-style:italic'>Sin actividad registrada</td></tr>"
+                _prox=f"<b>{l.get('proximaAccion','')}</b> &nbsp;·&nbsp; {l.get('fechaProximaAccion','')}" if l.get("proximaAccion") else "—"
+                _etapa_color={"Prospecto":"#1a4a8a","Contactado":"#2563eb","Interés Confirmado":"#7c3aed","Propuesta Enviada":"#b8860b","Negociación":"#ea580c","Cerrado Ganado":"#16a34a","Cerrado Perdido":"#dc2626","En Pausa / Recuperable":"#374151"}.get(l.get("etapa",""),"#0d3b6e")
+                return f"""<!DOCTYPE html><html><head><meta charset='utf-8'><title>Ficha {l['nombre']}</title>
 <style>
-  body{{font-family:Arial,sans-serif;max-width:800px;margin:30px auto;color:#111;font-size:13px}}
-  h1{{font-size:22px;color:#0d3b6e;margin-bottom:2px}} h2{{font-size:14px;color:#2563eb;margin:18px 0 6px;border-bottom:1px solid #dde;padding-bottom:3px}}
-  .badge{{display:inline-block;background:#0d3b6e;color:white;border-radius:4px;padding:2px 10px;font-size:12px;font-weight:700}}
-  .grid{{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin-bottom:8px}}
-  .lbl{{color:#666;font-size:11px;text-transform:uppercase;letter-spacing:.5px}} .val{{font-size:13px;font-weight:600}}
-  table{{width:100%;border-collapse:collapse;margin-top:4px}} tr:nth-child(even){{background:#f7f8fc}}
-  .prox{{background:#fff8e1;border:1px solid #f0c040;border-radius:4px;padding:8px 14px;margin-bottom:6px}}
-  @media print{{body{{margin:10px}}}}
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#1a1a2e;padding:24px 32px;font-size:13px;line-height:1.5}}
+  .header{{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:2px solid #0d3b6e;margin-bottom:18px}}
+  .header-left h1{{font-size:24px;color:#0d3b6e;margin-bottom:4px}}
+  .header-left .sub{{color:#555;font-size:13px}}
+  .badge{{display:inline-block;background:{_etapa_color};color:white;border-radius:4px;padding:3px 12px;font-size:12px;font-weight:700;margin-top:6px}}
+  .logo{{height:38px}}
+  .section-title{{font-size:13px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.6px;margin:18px 0 8px;border-bottom:1px solid #dde;padding-bottom:4px}}
+  .grid{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px 24px;margin-bottom:4px}}
+  .field .lbl{{color:#888;font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:1px}}
+  .field .val{{font-size:13px;font-weight:600;color:#1a1a2e}}
+  .prox-box{{background:#fff8e1;border:1px solid #f0c040;border-radius:6px;padding:10px 16px;font-size:13px}}
+  table{{width:100%;border-collapse:collapse;margin-top:4px;font-size:12px}}
+  thead tr{{background:#0d3b6e}} thead th{{color:white;padding:7px 10px;text-align:left;font-size:11px;font-weight:600}}
+  tbody tr:nth-child(even){{background:#f7f8fc}}
+  .notas{{background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:10px 14px;white-space:pre-wrap;font-size:12.5px}}
+  .footer{{margin-top:28px;padding-top:10px;border-top:1px solid #eee;color:#aaa;font-size:10px;display:flex;justify-content:space-between}}
+  .print-btn{{display:inline-block;background:#0d3b6e;color:white;border:none;border-radius:6px;padding:9px 22px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:20px}}
+  .print-btn:hover{{background:#2563eb}}
+  @media print{{.print-btn{{display:none}}body{{padding:10px 14px}}}}
 </style></head><body>
-<img src='logo_viamar.jpg' style='height:40px;margin-bottom:12px' onerror="this.style.display='none'">
-<h1>{l['nombre']}</h1>
-<div style='margin-bottom:12px'><span class='badge'>{l['etapa']}</span>&nbsp; {l.get('empresa','')} &nbsp;·&nbsp; {l.get('telefono','')} &nbsp;·&nbsp; {l.get('email','')}</div>
-<div class='grid'>
-  <div><div class='lbl'>Tipo / Modelo</div><div class='val'>{l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')}</div></div>
-  <div><div class='lbl'>Valor operación</div><div class='val'>€{int(l.get('valorOperacion',0) or 0):,}</div></div>
-  <div><div class='lbl'>Fuente</div><div class='val'>{l.get('fuenteLead','—')}</div></div>
-  <div><div class='lbl'>Probabilidad</div><div class='val'>{l.get('probabilidad','—')}%</div></div>
-  <div><div class='lbl'>Asignado a</div><div class='val'>{l.get('asignadoA','—')}</div></div>
-  <div><div class='lbl'>Alta</div><div class='val'>{l.get('fechaCreacion','—')}</div></div>
+<button class='print-btn' onclick='window.print()'>🖨️ Imprimir / Guardar PDF</button>
+<div class='header'>
+  <div class='header-left'>
+    <h1>{l['nombre']}</h1>
+    <div class='sub'>{l.get('empresa','') or '—'} &nbsp;·&nbsp; {l.get('telefono','') or '—'} &nbsp;·&nbsp; {l.get('email','') or '—'}</div>
+    <span class='badge'>{l.get('etapa','')}</span>
+  </div>
+  <img class='logo' src='https://raw.githubusercontent.com/Jose-Ibz/nauticrm/main/logo_viamar.jpg' onerror="this.style.display='none'">
 </div>
-{'<h2>Notas internas</h2><p style="white-space:pre-wrap">'+l.get("usoPrevisto","")+'</p>' if l.get("usoPrevisto") else ''}
-<h2>Próxima acción</h2><div class='prox'>{_prox}</div>
-<h2>Historial de comunicaciones</h2>
-<table><thead><tr style='background:#0d3b6e;color:white'><th style='padding:6px 10px;text-align:left;font-size:12px'>Fecha</th><th style='padding:6px 10px;text-align:left;font-size:12px'>Tipo</th><th style='padding:6px 10px;text-align:left;font-size:12px'>Nota</th></tr></thead>
+<div class='section-title'>Datos comerciales</div>
+<div class='grid'>
+  <div class='field'><div class='lbl'>Embarcación</div><div class='val'>{l.get('tipoEmbarcacion','—')} {l.get('modeloEslora','')}</div></div>
+  <div class='field'><div class='lbl'>Valor operación</div><div class='val'>€{int(l.get('valorOperacion',0) or 0):,}</div></div>
+  <div class='field'><div class='lbl'>Probabilidad</div><div class='val'>{l.get('probabilidad','—')}%</div></div>
+  <div class='field'><div class='lbl'>Fuente</div><div class='val'>{l.get('fuenteLead','—')}</div></div>
+  <div class='field'><div class='lbl'>Idioma</div><div class='val'>{l.get('idioma','—')}</div></div>
+  <div class='field'><div class='lbl'>Alta CRM</div><div class='val'>{l.get('fechaCreacion','—')}</div></div>
+</div>
+{'<div class="section-title">Notas internas</div><div class="notas">'+l.get("usoPrevisto","")+'</div>' if l.get("usoPrevisto") else ''}
+<div class='section-title'>Próxima acción</div>
+<div class='prox-box'>{_prox}</div>
+<div class='section-title'>Historial de comunicaciones</div>
+<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Nota</th></tr></thead>
 <tbody>{_hist_rows}</tbody></table>
-<div style='margin-top:30px;color:#aaa;font-size:10px'>NautiCRM · {date.today().strftime('%d/%m/%Y')}</div>
+<div class='footer'><span>NautiCRM · Náutica Viamar</span><span>Generado: {date.today().strftime('%d/%m/%Y')}</span></div>
 </body></html>"""
-        _html_ficha=_ficha_html(existing).encode("utf-8")
-        _fname_ficha=f"ficha_{existing['nombre'].replace(' ','_')}_{date.today()}.html"
-        st.download_button("🖨️ Descargar ficha (imprimir)", data=_html_ficha, file_name=_fname_ficha, mime="text/html", use_container_width=True)
+            import streamlit.components.v1 as _comp
+            _n_hist = len(existing.get("historial", []))
+            _altura = min(900, 480 + _n_hist * 40)
+            _comp.html(_ficha_html(existing), height=_altura, scrolling=True)
 
         st.markdown("---")
         if st.button("🗑️ Eliminar este lead"):
