@@ -1247,7 +1247,7 @@ elif "Acciones" in page:
     fv_pa=c1.selectbox("Vendedor",["Todos"]+vendedores,key="fv_pa")
     fe_pa=c2.selectbox("Etapa",["Todas"]+FUNNEL_STAGES,key="fe_pa")
     solo_v=c3.checkbox("Solo vencidas / urgentes")
-    acciones=[l for l in all_leads_raw if (l.get("proximaAccion") or l.get("fechaProximaAccion")) and l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido"]]
+    acciones=[l for l in all_leads_raw if (l.get("proximaAccion") or l.get("fechaProximaAccion")) and l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"]]
     if fv_pa!="Todos": acciones=[l for l in acciones if l["asignadoA"]==fv_pa]
     if fe_pa!="Todas": acciones=[l for l in acciones if l["etapa"]==fe_pa]
     if solo_v: acciones=[l for l in acciones if urg_emoji(l.get("fechaProximaAccion")) in ["🔴","🟡"]]
