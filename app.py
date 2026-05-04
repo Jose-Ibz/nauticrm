@@ -1610,7 +1610,6 @@ elif "Asistente" in page:
                     "archivo_frio":len(archivo_frio),
                     "clientes_pasivos":len(clientes_pasivos),
                 },
-                "campos_no_implementados": ["apellidos","telefonoSecundario","documentosAdjuntos","zonaNavegacion","barcoActual","financiacion","urgencia"]
             },
             "registros": todos
         }
