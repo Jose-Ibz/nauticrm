@@ -338,16 +338,13 @@ def _last_backup_date():
     except: return None
 
 def _backup_to_github(all_leads, archivo, pasivos):
-    """Sube un JSON completo a un repositorio privado de GitHub.
-    Requiere secrets: github_token y backup_repo (ej: 'Jose-Ibz/nauticrm-backups').
-    """
+    """Sube un JSON completo a un repositorio privado de GitHub."""
     import requests as _req, base64 as _b64, json as _jg
-    token = st.secrets.get("github_token","")
-    repo  = st.secrets.get("backup_repo","")
+    token = st.secrets.get("github_token","").strip()
+    repo  = st.secrets.get("backup_repo","").strip()
     if not token or not repo:
         return False, "github_token / backup_repo no configurados en secrets"
     try:
-        # Construir JSON completo
         export = {
             "fecha": str(date.today()),
             "generado_por": "NautiCRM - Náutica Viamar",
@@ -359,15 +356,23 @@ def _backup_to_github(all_leads, archivo, pasivos):
         content_b64   = _b64.b64encode(content_bytes).decode("utf-8")
 
         headers = {
-            "Authorization": f"token {token}",
-            "Accept": "application/vnd.github.v3+json"
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28"
         }
         fname = f"backup_{date.today().strftime('%Y%m%d')}.json"
         url   = f"https://api.github.com/repos/{repo}/contents/{fname}"
 
+        # Verificar que el repo es accesible
+        r_repo = _req.get(f"https://api.github.com/repos/{repo}", headers=headers, timeout=10)
+        if r_repo.status_code == 404:
+            return False, f"Repo '{repo}' no encontrado o sin acceso. Comprueba el nombre y el token."
+        if r_repo.status_code == 401:
+            return False, "Token inválido o sin permisos. Regenera el token con scope 'repo'."
+
         # Si el archivo ya existe hoy, obtener SHA para actualizarlo
-        r_get  = _req.get(url, headers=headers, timeout=15)
-        sha    = r_get.json().get("sha") if r_get.status_code == 200 else None
+        r_get = _req.get(url, headers=headers, timeout=15)
+        sha   = r_get.json().get("sha") if r_get.status_code == 200 else None
 
         payload = {"message": f"NautiCRM backup {date.today()}", "content": content_b64}
         if sha: payload["sha"] = sha
@@ -376,7 +381,8 @@ def _backup_to_github(all_leads, archivo, pasivos):
         if r_put.status_code in [200, 201]:
             return True, f"GitHub: {repo}/{fname}"
         else:
-            return False, f"GitHub error {r_put.status_code}: {r_put.json().get('message','')}"
+            _detail = r_put.json()
+            return False, f"GitHub error {r_put.status_code}: {_detail.get('message','')} — {_detail.get('errors', '')}"
     except Exception as e:
         return False, str(e)
 
