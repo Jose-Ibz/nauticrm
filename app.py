@@ -911,7 +911,7 @@ elif "Lead" in page:
                     _upd["proximaAccion"]      = _prox_a.strip()
                     _upd["fechaProximaAccion"] = str(_prox_d)
                 save_lead(_upd, is_new=False)
-                st.session_state["_nav_request"] = "📅 Próximas Acciones"
+                st.session_state["_sel_lead_request"] = existing["nombre"]
                 st.rerun()
 
         # ── Historial de comunicaciones ───────────────────────────────────────
@@ -931,6 +931,48 @@ elif "Lead" in page:
                     </div>
                     <div style='color:#e8e0d0;font-size:0.84rem;white-space:pre-wrap'>{h['nota']}</div>
                 </div>""", unsafe_allow_html=True)
+
+        # ── Ficha imprimible ──────────────────────────────────────────────────
+        st.markdown("---")
+        def _ficha_html(l):
+            _hist_rows="".join(f"""<tr><td style='padding:5px 10px;color:#555;font-size:12px;white-space:nowrap'>{h['fecha']}</td>
+                <td style='padding:5px 10px;font-size:12px'><span style='background:#2563eb;color:white;border-radius:3px;padding:1px 6px;font-size:11px'>{h['tipo']}</span></td>
+                <td style='padding:5px 10px;font-size:12px'>{h['nota']}</td></tr>""" for h in reversed(l.get("historial",[]))
+            ) or "<tr><td colspan='3' style='padding:8px 10px;color:#999;font-size:12px'>Sin actividad registrada</td></tr>"
+            _prox=f"{l.get('proximaAccion','')} &nbsp;·&nbsp; <b>{l.get('fechaProximaAccion','')}</b>" if l.get("proximaAccion") else "—"
+            return f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
+<title>Ficha {l['nombre']}</title>
+<style>
+  body{{font-family:Arial,sans-serif;max-width:800px;margin:30px auto;color:#111;font-size:13px}}
+  h1{{font-size:22px;color:#0d3b6e;margin-bottom:2px}} h2{{font-size:14px;color:#2563eb;margin:18px 0 6px;border-bottom:1px solid #dde;padding-bottom:3px}}
+  .badge{{display:inline-block;background:#0d3b6e;color:white;border-radius:4px;padding:2px 10px;font-size:12px;font-weight:700}}
+  .grid{{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin-bottom:8px}}
+  .lbl{{color:#666;font-size:11px;text-transform:uppercase;letter-spacing:.5px}} .val{{font-size:13px;font-weight:600}}
+  table{{width:100%;border-collapse:collapse;margin-top:4px}} tr:nth-child(even){{background:#f7f8fc}}
+  .prox{{background:#fff8e1;border:1px solid #f0c040;border-radius:4px;padding:8px 14px;margin-bottom:6px}}
+  @media print{{body{{margin:10px}}}}
+</style></head><body>
+<img src='logo_viamar.jpg' style='height:40px;margin-bottom:12px' onerror="this.style.display='none'">
+<h1>{l['nombre']}</h1>
+<div style='margin-bottom:12px'><span class='badge'>{l['etapa']}</span>&nbsp; {l.get('empresa','')} &nbsp;·&nbsp; {l.get('telefono','')} &nbsp;·&nbsp; {l.get('email','')}</div>
+<div class='grid'>
+  <div><div class='lbl'>Tipo / Modelo</div><div class='val'>{l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')}</div></div>
+  <div><div class='lbl'>Valor operación</div><div class='val'>€{int(l.get('valorOperacion',0) or 0):,}</div></div>
+  <div><div class='lbl'>Fuente</div><div class='val'>{l.get('fuenteLead','—')}</div></div>
+  <div><div class='lbl'>Probabilidad</div><div class='val'>{l.get('probabilidad','—')}%</div></div>
+  <div><div class='lbl'>Asignado a</div><div class='val'>{l.get('asignadoA','—')}</div></div>
+  <div><div class='lbl'>Alta</div><div class='val'>{l.get('fechaCreacion','—')}</div></div>
+</div>
+{'<h2>Notas internas</h2><p style="white-space:pre-wrap">'+l.get("usoPrevisto","")+'</p>' if l.get("usoPrevisto") else ''}
+<h2>Próxima acción</h2><div class='prox'>{_prox}</div>
+<h2>Historial de comunicaciones</h2>
+<table><thead><tr style='background:#0d3b6e;color:white'><th style='padding:6px 10px;text-align:left;font-size:12px'>Fecha</th><th style='padding:6px 10px;text-align:left;font-size:12px'>Tipo</th><th style='padding:6px 10px;text-align:left;font-size:12px'>Nota</th></tr></thead>
+<tbody>{_hist_rows}</tbody></table>
+<div style='margin-top:30px;color:#aaa;font-size:10px'>NautiCRM · {date.today().strftime('%d/%m/%Y')}</div>
+</body></html>"""
+        _html_ficha=_ficha_html(existing).encode("utf-8")
+        _fname_ficha=f"ficha_{existing['nombre'].replace(' ','_')}_{date.today()}.html"
+        st.download_button("🖨️ Descargar ficha (imprimir)", data=_html_ficha, file_name=_fname_ficha, mime="text/html", use_container_width=True)
 
         st.markdown("---")
         if st.button("🗑️ Eliminar este lead"):
