@@ -589,6 +589,9 @@ elif "Lead" in page:
     if _goto:
         st.session_state["sel_lead"] = _goto if _goto in nombres_lista else nombres_lista[0]
         st.session_state["goto_lead"] = None
+    if st.session_state.get("_sel_lead_request"):
+        st.session_state["sel_lead"] = st.session_state["_sel_lead_request"]
+        st.session_state["_sel_lead_request"] = None
     if "sel_lead" not in st.session_state:
         st.session_state["sel_lead"] = nombres_lista[0]
     sel=st.selectbox("Seleccionar lead existente",nombres_lista,key="sel_lead")
@@ -643,7 +646,7 @@ elif "Lead" in page:
                 save_lead(new_lead,is_new=not bool(existing))
                 st.session_state["_guardando"] = False
                 st.session_state["_ultimo_guardado"] = nombre
-                st.session_state["sel_lead"] = nombre
+                st.session_state["_sel_lead_request"] = nombre
                 st.rerun()
 
     if existing:
