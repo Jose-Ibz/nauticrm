@@ -812,20 +812,56 @@ elif "Archivo" in page:
                     delete_lead(l["id"]); st.rerun()
     if not archivo_frio: st.info("El archivo frío está vacío.")
     else:
-        c1,c2,c3=st.columns(3)
-        q_a=c1.text_input("🔍 Buscar",key="q_arch"); ft_a=c2.selectbox("Tipo",["Todos"]+boat_types,key="ft_arch"); fv_a=c3.selectbox("Vendedor",["Todos"]+vendedores,key="fv_arch")
+        st.markdown("#### 🔎 Segmentación")
+        _fa1,_fa2,_fa3=st.columns(3)
+        q_a   =_fa1.text_input("🔍 Buscar nombre / empresa",key="q_arch")
+        ft_a  =_fa2.selectbox("Embarcación",["Todos"]+boat_types,key="ft_arch")
+        fi_a  =_fa3.selectbox("Idioma",["Todos"]+IDIOMAS,key="fi_arch")
+        _fb1,_fb2,_fb3=st.columns(3)
+        fv_a  =_fb1.selectbox("Vendedor",["Todos"]+vendedores,key="fv_arch")
+        _presu_vals=[l.get("valorOperacion",0) or l.get("presupuesto",0) for l in archivo_frio if l.get("valorOperacion",0) or l.get("presupuesto",0)]
+        _pmin=int(min(_presu_vals)) if _presu_vals else 0
+        _pmax=int(max(_presu_vals)) if _presu_vals else 500000
+        if _pmax>_pmin:
+            _rango=_fb2.slider("Presupuesto (€)",min_value=_pmin,max_value=_pmax,value=(_pmin,_pmax),step=5000,key="fp_arch",format="€%d")
+        else:
+            _rango=(_pmin,_pmax)
+
         filtrado=archivo_frio
-        if q_a: filtrado=[l for l in filtrado if q_a.lower() in (l.get("nombre","")+" "+l.get("empresa","")).lower()]
+        if q_a:        filtrado=[l for l in filtrado if q_a.lower() in (l.get("nombre","")+" "+l.get("empresa","")).lower()]
         if ft_a!="Todos": filtrado=[l for l in filtrado if l.get("tipoEmbarcacion")==ft_a]
+        if fi_a!="Todos": filtrado=[l for l in filtrado if l.get("idioma")==fi_a]
         if fv_a!="Todos": filtrado=[l for l in filtrado if l.get("asignadoA")==fv_a]
-        st.caption(f"{len(filtrado)} de {len(archivo_frio)} contactos")
-        rows=[{"Nombre":l.get("nombre",""),"Empresa":l.get("empresa",""),"Idioma":l.get("idioma","—"),"Embarcación":f"{l.get('tipoEmbarcacion','')}·{l.get('modeloEslora','')}","Presupuesto":fmt_eur(l.get("presupuesto",0)),"Email":l.get("email",""),"Teléfono":l.get("telefono",""),"Vendedor":l.get("asignadoA",""),"Archivado":l.get("fechaArchivo","")} for l in filtrado]
+        filtrado=[l for l in filtrado if _rango[0]<=(l.get("valorOperacion",0) or l.get("presupuesto",0))<=_rango[1]]
+
+        st.caption(f"**{len(filtrado)}** contactos seleccionados de {len(archivo_frio)} en total")
+        rows=[{
+            "Nombre":l.get("nombre",""),"Empresa":l.get("empresa",""),
+            "Idioma":l.get("idioma","—"),
+            "Embarcación":f"{l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')}".strip(),
+            "Valor €":fmt_eur(l.get("valorOperacion",0) or l.get("presupuesto",0)),
+            "Email":l.get("email",""),"Teléfono":l.get("telefono",""),
+            "Vendedor":l.get("asignadoA",""),"Archivado":l.get("fechaArchivo","")
+        } for l in filtrado]
         st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
+
         import io as _io2
-        rows_xl=[{"Nombre":l.get("nombre",""),"Email":l.get("email",""),"Teléfono":l.get("telefono",""),"Fecha entrada":l.get("fechaCreacion",""),"Barco":f"{l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')}".strip(),"Presupuesto €":l.get("presupuesto",0),"Empresa":l.get("empresa",""),"Vendedor":l.get("asignadoA",""),"Archivado":l.get("fechaArchivo","")} for l in filtrado]
+        rows_xl=[{
+            "Nombre":l.get("nombre",""),"Empresa":l.get("empresa",""),
+            "Email":l.get("email",""),"Teléfono":l.get("telefono",""),
+            "Idioma":l.get("idioma","—"),
+            "Embarcación":f"{l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')}".strip(),
+            "Uso previsto":l.get("usoPrevisto",""),
+            "Valor €":l.get("valorOperacion",0) or l.get("presupuesto",0),
+            "Vendedor":l.get("asignadoA",""),
+            "Fecha entrada":l.get("fechaCreacion",""),
+            "Archivado":l.get("fechaArchivo","")
+        } for l in filtrado]
+        _sufijo="_".join(filter(None,[ft_a if ft_a!="Todos" else "",fi_a if fi_a!="Todos" else "",fv_a if fv_a!="Todos" else ""]))
+        _fname=f"archivo_frio{'_'+_sufijo if _sufijo else ''}_{date.today()}.xlsx"
         _buf_arch=_io2.BytesIO()
         pd.DataFrame(rows_xl).to_excel(_buf_arch,index=False,engine="openpyxl")
-        st.download_button("⬇️ Exportar Excel",data=_buf_arch.getvalue(),file_name="archivo_frio.xlsx",mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("⬇️ Exportar segmento a Excel",data=_buf_arch.getvalue(),file_name=_fname,mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         st.markdown("---"); st.markdown("**♻️ Reactivar contacto**")
         sel_r=st.selectbox("Seleccionar",["— Selecciona —"]+[l["nombre"] for l in archivo_frio])
         if sel_r!="— Selecciona —" and st.button("♻️ Reactivar como Prospecto"):
