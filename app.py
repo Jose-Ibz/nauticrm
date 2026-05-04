@@ -95,6 +95,8 @@ def get_sheet(tab):
         return ws
 
 LEAD_COLS = ["id","nombre","empresa","telefono","email","idioma","tipoEmbarcacion","modeloEslora","presupuesto","usoPrevisto","asignadoA","etapa","probabilidad","valorOperacion","fuenteLead","proximaAccion","fechaProximaAccion","historial","fechaCreacion","ultimaActualizacion"]
+ARCH_COLS  = LEAD_COLS + ["fechaArchivo", "motivoArchivo"]
+PASIV_COLS = LEAD_COLS + ["fechaPasivo"]
 
 @st.cache_data(ttl=30)
 def load_leads():
@@ -138,7 +140,6 @@ def load_config():
     vendedores = ["Vendedor 1","Vendedor 2","Vendedor 3"]
     boat_types = ["Velero","Motor","Catamarán","Zodiac","Charter","Jeanneau","Beneteau","Sunseeker","Princess","Azimut","Ferretti","Bavaria","Hanse","Lagoon","Otro"]
     sources    = ["Feria Náutica","Web","Referido","RRSS","Llamada Fría","Otro"]
-    archivo    = []
     if not all_values or len(all_values) <= 1:
         data = []
     else:
@@ -149,7 +150,7 @@ def load_config():
         for i,v in enumerate(vendedores): ws.append_row([f"v{i+1}",v])
         ws.append_row(["boat_types", "||".join(boat_types)])
         ws.append_row(["sources", "||".join(sources)])
-        return vendedores, boat_types, sources, archivo
+        return vendedores, boat_types, sources
     df = pd.DataFrame(data)
     vv = df[df["key"].isin(["v1","v2","v3"])]["value"].tolist()
     if vv: vendedores = vv
@@ -157,18 +158,7 @@ def load_config():
     if bt_row: boat_types = bt_row[0].split("||")
     src_row = df[df["key"]=="sources"]["value"].tolist()
     if src_row: sources = src_row[0].split("||")
-    arch_row = df[df["key"]=="archivo_frio"]["value"].tolist()
-    if arch_row and arch_row[0]:
-        import json
-        try: archivo = json.loads(arch_row[0])
-        except: archivo = []
-    pasivos = []
-    pas_row = df[df["key"]=="clientes_pasivos"]["value"].tolist()
-    if pas_row and pas_row[0]:
-        import json
-        try: pasivos = json.loads(pas_row[0])
-        except: pasivos = []
-    return vendedores, boat_types, sources, archivo, pasivos
+    return vendedores, boat_types, sources
 
 def save_lead(lead, is_new=True):
     ws = get_sheet("Leads")
@@ -202,6 +192,114 @@ def delete_lead(lead_id):
                 ws.delete_rows(i+2); break
     load_leads.clear()
 
+def _sheet_exists(name):
+    try:
+        return name in {ws.title for ws in _get_spreadsheet().worksheets()}
+    except: return False
+
+def _ensure_sheet(name, cols):
+    sp = _get_spreadsheet()
+    titles = {ws.title for ws in sp.worksheets()}
+    if name not in titles:
+        ws = sp.add_worksheet(title=name, rows=200, cols=len(cols)+2)
+        ws.update("A1", [cols])
+    return get_sheet(name)
+
+def _serialize_lead_row(l, col_list):
+    import json as _js
+    hist = l.get("historial", [])
+    if isinstance(hist, list):
+        hist_str = ";;".join([f"{h.get('fecha','')}|{h.get('tipo','')}|{h.get('nota','')}" for h in hist])
+    else:
+        hist_str = str(hist)
+    row = []
+    for c in col_list:
+        if c == "historial":
+            row.append(hist_str)
+        else:
+            v = l.get(c, "")
+            row.append(str(v) if v is not None else "")
+    return row
+
+def _deserialize_lead_rows(ws_rows, col_list):
+    if not ws_rows or len(ws_rows) <= 1: return []
+    headers = ws_rows[0]
+    result = []
+    for row in ws_rows[1:]:
+        if not any(row): continue
+        padded = row + [""] * max(0, len(headers) - len(row))
+        l = dict(zip(headers, padded))
+        h_raw = l.get("historial", "")
+        if h_raw:
+            try:
+                entries = [e.split("|", 2) for e in h_raw.split(";;") if e]
+                l["historial"] = [{"fecha": e[0], "tipo": e[1] if len(e) > 1 else "", "nota": e[2] if len(e) > 2 else ""} for e in entries]
+            except: l["historial"] = []
+        else:
+            l["historial"] = []
+        result.append(l)
+    return result
+
+@st.cache_data(ttl=30)
+def load_archivo_frio():
+    try:
+        if not _sheet_exists("ArchivoFrio"):
+            _migrate_archivo_from_config()
+            return load_archivo_frio()
+        ws = get_sheet("ArchivoFrio")
+        return _deserialize_lead_rows(ws.get_all_values(), ARCH_COLS)
+    except: return []
+
+@st.cache_data(ttl=30)
+def load_clientes_pasivos():
+    try:
+        if not _sheet_exists("ClientesPasivos"):
+            _migrate_pasivos_from_config()
+            return load_clientes_pasivos()
+    except: return []
+    try:
+        ws = get_sheet("ClientesPasivos")
+        return _deserialize_lead_rows(ws.get_all_values(), PASIV_COLS)
+    except: return []
+
+def save_archivo_frio(archivo):
+    ws = _ensure_sheet("ArchivoFrio", ARCH_COLS)
+    rows = [ARCH_COLS] + [_serialize_lead_row(l, ARCH_COLS) for l in (archivo or [])]
+    ws.clear()
+    ws.update("A1", rows)
+    load_archivo_frio.clear()
+
+def save_clientes_pasivos(pasivos):
+    ws = _ensure_sheet("ClientesPasivos", PASIV_COLS)
+    rows = [PASIV_COLS] + [_serialize_lead_row(l, PASIV_COLS) for l in (pasivos or [])]
+    ws.clear()
+    ws.update("A1", rows)
+    load_clientes_pasivos.clear()
+
+def _migrate_archivo_from_config():
+    """Migración única: mueve archivo_frio de celda JSON de Config a hoja ArchivoFrio."""
+    import json as _jm
+    try:
+        ws_cfg = get_sheet("Config")
+        rows = ws_cfg.get_all_values()
+        df = {r[0]: r[1] for r in rows[1:] if len(r) >= 2}
+        raw = df.get("archivo_frio", "")
+        archivo = _jm.loads(raw) if raw else []
+        save_archivo_frio(archivo)
+    except: save_archivo_frio([])
+
+def _migrate_pasivos_from_config():
+    """Migración única: mueve clientes_pasivos de celda JSON de Config a hoja ClientesPasivos."""
+    import json as _jm
+    try:
+        ws_cfg = get_sheet("Config")
+        rows = ws_cfg.get_all_values()
+        df = {r[0]: r[1] for r in rows[1:] if len(r) >= 2}
+        raw = df.get("clientes_pasivos", "")
+        pasivos = _jm.loads(raw) if raw else []
+        save_clientes_pasivos(pasivos)
+    except: save_clientes_pasivos([])
+
 def con_cambio_etapa(lead_dict, etapa_anterior):
     """Si la etapa cambió, añade entrada automática al historial."""
     nueva = lead_dict.get("etapa","")
@@ -211,10 +309,8 @@ def con_cambio_etapa(lead_dict, etapa_anterior):
         return {**lead_dict,"historial":hist}
     return lead_dict
 
-def save_config(vendedores, boat_types, sources, archivo, pasivos=None):
-    import json
+def save_config(vendedores, boat_types, sources, archivo=None, pasivos=None):
     ws = get_sheet("Config")
-    ws.clear()
     rows = [
         ["key", "value"],
         ["v1", vendedores[0]],
@@ -222,11 +318,18 @@ def save_config(vendedores, boat_types, sources, archivo, pasivos=None):
         ["v3", vendedores[2]],
         ["boat_types", "||".join(boat_types)],
         ["sources", "||".join(sources)],
-        ["archivo_frio", json.dumps(archivo, ensure_ascii=False)],
-        ["clientes_pasivos", json.dumps(pasivos or [], ensure_ascii=False)],
     ]
     ws.update("A1", rows)
+    try:
+        all_vals = ws.get_all_values()
+        if len(all_vals) > len(rows):
+            ws.delete_rows(len(rows)+1, len(all_vals))
+    except: pass
     load_config.clear()
+    if archivo is not None:
+        save_archivo_frio(archivo)
+    if pasivos is not None:
+        save_clientes_pasivos(pasivos)
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
 def fmt_eur(n):
@@ -261,17 +364,30 @@ def _backup_name_today():
     return f"Bak_{date.today().strftime('%Y%m%d')}"
 
 def _list_backup_sheets():
-    """Devuelve lista de hojas de backup ordenadas de más reciente a más antigua."""
+    """Devuelve lista de hojas Bak_ (solo Leads) ordenadas de más reciente a más antigua."""
     try:
         sp = _get_spreadsheet()
-        sheets = [ws for ws in sp.worksheets() if ws.title.startswith("Bak_")]
+        sheets = [ws for ws in sp.worksheets() if ws.title.startswith("Bak_") and not ws.title.startswith(("BakCfg_","BakArch_","BakPas_"))]
         return sorted(sheets, key=lambda x: x.title, reverse=True)
     except: return []
+
+def _backup_sheet(sp, src_name, bak_prefix, today_str, existing_titles):
+    """Crea copia de seguridad de una hoja si no existe ya para hoy."""
+    bname = f"{bak_prefix}{today_str}"
+    if bname in existing_titles: return
+    if src_name not in existing_titles: return
+    src_ws = sp.worksheet(src_name)
+    data = src_ws.get_all_values()
+    nrows = max(len(data) + 10, 50)
+    ncols = max(len(data[0]) if data else 5, 5)
+    bak_ws = sp.add_worksheet(title=bname, rows=nrows, cols=ncols)
+    if data: bak_ws.update("A1", data)
 
 def _do_backup():
     """Crea la copia del día si no existe. Devuelve (creada:bool, msg:str)."""
     try:
-        bname = _backup_name_today()
+        today_str = date.today().strftime('%Y%m%d')
+        bname = f"Bak_{today_str}"
         sp = _get_spreadsheet()
         existing_titles = {ws.title for ws in sp.worksheets()}
         if bname in existing_titles:
@@ -283,11 +399,22 @@ def _do_backup():
         bak_ws = sp.add_worksheet(title=bname, rows=nrows, cols=len(LEAD_COLS)+2)
         if all_data:
             bak_ws.update("A1", all_data)
-        # Purgar copias antiguas
-        bak_sheets = sorted([ws for ws in sp.worksheets() if ws.title.startswith("Bak_")], key=lambda x: x.title)
+        # Backup de las demás hojas importantes
+        existing_titles.add(bname)
+        _backup_sheet(sp, "Config", "BakCfg_", today_str, existing_titles)
+        _backup_sheet(sp, "ArchivoFrio", "BakArch_", today_str, existing_titles)
+        _backup_sheet(sp, "ClientesPasivos", "BakPas_", today_str, existing_titles)
+        # Purgar copias antiguas (Leads)
+        bak_sheets = sorted([ws for ws in sp.worksheets() if ws.title.startswith("Bak_") and not ws.title.startswith(("BakCfg_","BakArch_","BakPas_"))], key=lambda x: x.title)
         while len(bak_sheets) > BACKUP_MAX:
             sp.del_worksheet(bak_sheets[0])
             bak_sheets = bak_sheets[1:]
+        # Purgar copias antiguas (Config, ArchivoFrio, ClientesPasivos)
+        for prefix in ("BakCfg_","BakArch_","BakPas_"):
+            _aux = sorted([ws for ws in sp.worksheets() if ws.title.startswith(prefix)], key=lambda x: x.title)
+            while len(_aux) > BACKUP_MAX:
+                sp.del_worksheet(_aux[0])
+                _aux = _aux[1:]
         return True, bname
     except Exception as e:
         return False, str(e)
@@ -429,7 +556,9 @@ def _last_github_backup_date():
 # ─── CARGAR DATOS ─────────────────────────────────────────────────────────────
 try:
     all_leads_raw = load_leads()
-    vendedores, boat_types, sources, archivo_frio, clientes_pasivos = load_config()
+    vendedores, boat_types, sources = load_config()
+    archivo_frio = load_archivo_frio()
+    clientes_pasivos = load_clientes_pasivos()
 except Exception as e:
     st.error(f"❌ Error conectando con Google Sheets: {e}")
     st.info("Comprueba que los Secrets están bien configurados en Streamlit Cloud.")
@@ -447,7 +576,7 @@ def auto_archivar(leads):
 activos, nuevos_arch = auto_archivar(all_leads_raw)
 if nuevos_arch:
     archivo_frio.extend(nuevos_arch)
-    save_config(vendedores, boat_types, sources, archivo_frio, clientes_pasivos)
+    save_archivo_frio(archivo_frio)
     for l in nuevos_arch: delete_lead(l["id"])
     all_leads_raw = activos
 
@@ -456,7 +585,7 @@ _nuevos_pasivos=[l for l in all_leads_raw
     if l.get("etapa")=="Cerrado Ganado" and months_since(l.get("ultimaActualizacion") or l.get("fechaCreacion",""))>=12]
 if _nuevos_pasivos:
     clientes_pasivos.extend([{**l,"fechaPasivo":str(date.today())} for l in _nuevos_pasivos])
-    save_config(vendedores, boat_types, sources, archivo_frio, clientes_pasivos)
+    save_clientes_pasivos(clientes_pasivos)
     for l in _nuevos_pasivos: delete_lead(l["id"])
     all_leads_raw=[l for l in all_leads_raw if l["id"] not in {x["id"] for x in _nuevos_pasivos}]
 
@@ -530,7 +659,7 @@ with st.sidebar:
     if page != "➕ Nuevo / Editar Lead":
         st.session_state["goto_lead"] = None
     st.markdown("---")
-    if st.button("🔄 Actualizar datos"): load_leads.clear(); load_config.clear(); st.rerun()
+    if st.button("🔄 Actualizar datos"): load_leads.clear(); load_config.clear(); load_archivo_frio.clear(); load_clientes_pasivos.clear(); st.rerun()
     n_arch=len(archivo_frio)
     if n_arch>0: st.markdown(f"<div style='background:#1a3050;border-radius:6px;padding:6px 10px;font-size:0.75rem;color:#7a8fa6;margin-bottom:4px'>🧊 Archivo Frío: <b style='color:#e8e0d0'>{n_arch}</b></div>", unsafe_allow_html=True)
     n_pas=len(clientes_pasivos)
@@ -1429,7 +1558,7 @@ elif "Lead" in page:
             st.markdown("<div style='color:#7a8fa6;font-size:0.8rem'>Este cliente ha cerrado operación. Si ya no va a comprar más (se ha ido de Ibiza, etc.) puedes pasarlo a pasivo: saldrá del pipeline pero sus datos quedan en la BBDD histórica.</div>", unsafe_allow_html=True)
             if st.button("👤 Pasar a cliente pasivo", use_container_width=True):
                 clientes_pasivos.append({**existing,"fechaPasivo":str(date.today())})
-                save_config(vendedores, boat_types, sources, archivo_frio, clientes_pasivos)
+                save_clientes_pasivos(clientes_pasivos)
                 delete_lead(existing["id"])
                 st.session_state["_nav_request"]="⊞ Funnel Kanban"
                 st.success(f"✅ {existing['nombre']} pasado a clientes pasivos.")
@@ -1577,7 +1706,7 @@ elif "Archivo" in page:
                 _nl.pop("fechaPasivo",None)
                 save_lead(_nl,is_new=True)
                 _cp_nuevo=[l for l in clientes_pasivos if l["nombre"]!=_sel_p]
-                save_config(vendedores,boat_types,sources,archivo_frio,_cp_nuevo)
+                save_clientes_pasivos(_cp_nuevo)
                 st.success(f"✅ {_sel_p} reactivado como Prospecto."); st.rerun()
     with _tab_arch:
         st.markdown("Contactos en pausa más de **6 meses**.")
@@ -1592,7 +1721,7 @@ elif "Archivo" in page:
                 else:
                     _l_arch={**_pa["lead"],"fechaArchivo":str(date.today()),"motivoArchivo":_motivo_a.strip()}
                     archivo_frio.append(_l_arch)
-                    save_config(vendedores,boat_types,sources,archivo_frio,clientes_pasivos)
+                    save_archivo_frio(archivo_frio)
                     delete_lead(_pa["lead"]["id"])
                     st.session_state.pop("pending_arch",None)
                     st.rerun()
@@ -1669,7 +1798,7 @@ elif "Archivo" in page:
             nuevo_lead.pop("fechaArchivo",None)
             save_lead(nuevo_lead,is_new=True)
             archivo_frio_nuevo=[l for l in archivo_frio if l["nombre"]!=sel_r]
-            save_config(vendedores,boat_types,sources,archivo_frio_nuevo,clientes_pasivos)
+            save_archivo_frio(archivo_frio_nuevo)
             st.success(f"✅ {sel_r} reactivado."); st.rerun()
 
 # ══ ASISTENTE IA ══════════════════════════════════════════════════════════════
@@ -1876,7 +2005,7 @@ elif "Config" in page:
         with st.form("cfg_v"):
             names=[st.text_input(f"Vendedor {i+1}",value=v) for i,v in enumerate(vendedores)]
             if st.form_submit_button("💾 Guardar nombres"):
-                save_config(names,boat_types,sources,archivo_frio,clientes_pasivos); st.success("✅ Actualizado."); st.rerun()
+                save_config(names,boat_types,sources); st.success("✅ Actualizado."); st.rerun()
     with tab2:
         st.caption("Gestiona los valores del desplegable de embarcación.")
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1888,17 +2017,17 @@ elif "Config" in page:
                 if c2.button("✕",key=f"del_{i}"): to_delete=bt
         if to_delete:
             new_bt=[x for x in boat_types if x!=to_delete]
-            save_config(vendedores,new_bt,sources,archivo_frio,clientes_pasivos); st.rerun()
+            save_config(vendedores,new_bt,sources); st.rerun()
         st.markdown("<br>", unsafe_allow_html=True)
         with st.form("cfg_b"):
             c1,c2=st.columns([3,1])
             nueva=c1.text_input("Nueva marca/tipo",placeholder="Ej: Hallberg-Rassy, Dufour...",label_visibility="collapsed")
             if c2.form_submit_button("➕ Añadir"):
                 if nueva.strip() and nueva.strip() not in boat_types:
-                    save_config(vendedores,boat_types+[nueva.strip()],sources,archivo_frio,clientes_pasivos); st.success(f"✅ '{nueva.strip()}' añadido."); st.rerun()
+                    save_config(vendedores,boat_types+[nueva.strip()],sources); st.success(f"✅ '{nueva.strip()}' añadido."); st.rerun()
                 elif nueva.strip() in boat_types: st.warning("Ya existe.")
         if st.button("↺ Restaurar por defecto"):
-            save_config(vendedores,["Velero","Motor","Catamarán","Zodiac","Charter","Jeanneau","Beneteau","Sunseeker","Princess","Azimut","Ferretti","Bavaria","Hanse","Lagoon","Otro"],sources,archivo_frio,clientes_pasivos); st.rerun()
+            save_config(vendedores,["Velero","Motor","Catamarán","Zodiac","Charter","Jeanneau","Beneteau","Sunseeker","Princess","Azimut","Ferretti","Bavaria","Hanse","Lagoon","Otro"],sources); st.rerun()
     with tab3:
         st.caption("Gestiona los valores del desplegable de fuente de lead.")
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1910,17 +2039,17 @@ elif "Config" in page:
                 if c2.button("✕",key=f"del_src_{i}"): to_delete_src=src
         if to_delete_src:
             new_src=[x for x in sources if x!=to_delete_src]
-            save_config(vendedores,boat_types,new_src,archivo_frio,clientes_pasivos); st.rerun()
+            save_config(vendedores,boat_types,new_src); st.rerun()
         st.markdown("<br>", unsafe_allow_html=True)
         with st.form("cfg_src"):
             c1,c2=st.columns([3,1])
             nueva_src=c1.text_input("Nueva fuente",placeholder="Ej: LinkedIn, Partner, Evento...",label_visibility="collapsed")
             if c2.form_submit_button("➕ Añadir"):
                 if nueva_src.strip() and nueva_src.strip() not in sources:
-                    save_config(vendedores,boat_types,sources+[nueva_src.strip()],archivo_frio,clientes_pasivos); st.success(f"✅ '{nueva_src.strip()}' añadido."); st.rerun()
+                    save_config(vendedores,boat_types,sources+[nueva_src.strip()]); st.success(f"✅ '{nueva_src.strip()}' añadido."); st.rerun()
                 elif nueva_src.strip() in sources: st.warning("Ya existe.")
         if st.button("↺ Restaurar fuentes por defecto"):
-            save_config(vendedores,boat_types,["Feria Náutica","Web","Referido","RRSS","Llamada Fría","Otro"],archivo_frio,clientes_pasivos); st.rerun()
+            save_config(vendedores,boat_types,["Feria Náutica","Web","Referido","RRSS","Llamada Fría","Otro"]); st.rerun()
     with tab4:
         st.markdown("### 💾 Copias de Seguridad")
         st.caption(f"Copia automática cada día al abrir la app. Últimas **{BACKUP_MAX}** en Google Sheets + copia independiente en GitHub si está configurado.")
