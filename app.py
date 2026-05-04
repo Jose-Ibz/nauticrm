@@ -347,7 +347,7 @@ if "Kanban" in page:
                 <span style="color:white;font-size:0.6rem;font-weight:700;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:75%">{stage}</span>
                 <span style="background:rgba(0,0,0,0.35);color:white;border-radius:10px;padding:1px 8px;font-size:0.85rem;font-weight:700;flex-shrink:0">{len(cards)}</span>
             </div><div style="background:#091220;border-radius:0 0 6px 6px;padding:5px;min-height:80px">
-            {"<small style='color:#7a8fa6;font-family:monospace;padding:0 4px;font-size:0.65rem'>"+fmt_eur(total)+"</small>" if total>0 else ""}""", unsafe_allow_html=True)
+            {"<div style='text-align:center;padding:4px 2px 6px;font-family:monospace;font-size:1rem;font-weight:700;color:#c9a84c'>"+fmt_eur(total)+"</div>" if total>0 else ""}""", unsafe_allow_html=True)
             for l in cards:
                 d=days_since(l.get("ultimaActualizacion") or l.get("fechaCreacion",""))
                 btn_label=f"{urg_emoji(l.get('fechaProximaAccion'))} {l['nombre']}|{l.get('modeloEslora') or l['tipoEmbarcacion']}|{fmt_eur(l.get('valorOperacion',0))} · {l['asignadoA'].replace('Vendedor','V.')} · {d}d"
@@ -393,7 +393,7 @@ if "Kanban" in page:
                 <span style="color:white;font-size:0.65rem;font-weight:700;text-transform:uppercase">{icon} {stage}</span>
                 <span style="background:rgba(0,0,0,0.3);color:white;border-radius:10px;padding:0 6px;font-size:0.85rem;font-weight:700">{len(cards)}</span>
             </div><div style="background:#091220;border-radius:0 0 6px 6px;padding:5px;min-height:80px">
-            {"<small style='color:#7a8fa6;font-family:monospace;padding:0 4px;font-size:0.65rem'>"+fmt_eur(total)+"</small>" if total>0 else ""}""", unsafe_allow_html=True)
+            {"<div style='text-align:center;padding:4px 2px 6px;font-family:monospace;font-size:1rem;font-weight:700;color:#c9a84c'>"+fmt_eur(total)+"</div>" if total>0 else ""}""", unsafe_allow_html=True)
             for l in cards[:5]:
                 st.markdown(f"""<div style="background:#0d1e35;border:1px solid #1a3050;border-left:3px solid {color};border-radius:5px;padding:5px 8px;margin:3px 0;font-size:0.7rem">
                     <div style="font-weight:600;color:#e8e0d0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{l['nombre']}</div>
