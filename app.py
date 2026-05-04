@@ -551,8 +551,23 @@ elif "Informes" in page:
                 )
                 fig2.update_traces(width=0.6)
                 st.plotly_chart(fig2,use_container_width=True)
-            rows_f=[{"Etapa":d["Etapa"],"Leads":d["Leads"],"Valor Pipeline":fmt_eur(d["Valor"]),"Ticket Medio":fmt_eur(d["Valor"]/d["Leads"]) if d["Leads"]>0 else "—"} for d in fd]
-            st.dataframe(pd.DataFrame(rows_f),use_container_width=True,hide_index=True)
+            _filas_f="".join(f"""<tr>
+                <td style='padding:8px 14px;color:#e8e0d0;font-size:0.83rem;border-bottom:1px solid #1a3050'>
+                  <span style='display:inline-block;width:10px;height:10px;border-radius:50%;background:{d["Color"]};margin-right:8px;vertical-align:middle'></span>{d["Etapa"]}
+                </td>
+                <td style='padding:8px 14px;text-align:center;color:#c9a84c;font-weight:700;font-size:0.9rem;border-bottom:1px solid #1a3050'>{d["Leads"]}</td>
+                <td style='padding:8px 14px;text-align:center;color:#2ecc71;font-family:monospace;font-size:0.85rem;border-bottom:1px solid #1a3050'>{fmt_eur(d["Valor"])}</td>
+                <td style='padding:8px 14px;text-align:center;color:#7a8fa6;font-family:monospace;font-size:0.85rem;border-bottom:1px solid #1a3050'>{fmt_eur(d["Valor"]//d["Leads"]) if d["Leads"]>0 else "—"}</td>
+            </tr>""" for d in fd)
+            st.markdown(f"""<table style='width:100%;border-collapse:collapse;background:#091220;border-radius:8px;overflow:hidden;margin-top:8px'>
+                <thead><tr style='background:#0d1e35'>
+                  <th style='padding:9px 14px;text-align:left;color:#7a8fa6;font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px'>Etapa</th>
+                  <th style='padding:9px 14px;text-align:center;color:#7a8fa6;font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px'>Leads</th>
+                  <th style='padding:9px 14px;text-align:center;color:#7a8fa6;font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px'>Valor Pipeline</th>
+                  <th style='padding:9px 14px;text-align:center;color:#7a8fa6;font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px'>Ticket Medio</th>
+                </tr></thead>
+                <tbody>{_filas_f}</tbody>
+            </table>""", unsafe_allow_html=True)
     with tab2:
         c1,c2=st.columns(2)
         with c1:
