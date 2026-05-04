@@ -251,6 +251,92 @@ def months_since(ds):
         return (date.today().year-d.year)*12+(date.today().month-d.month)
     except: return 0
 
+# ─── BACKUP ───────────────────────────────────────────────────────────────────
+BACKUP_MAX = 30  # máximo de copias a conservar
+
+def _get_spreadsheet():
+    return get_client().open_by_key(st.secrets["spreadsheet_id"])
+
+def _backup_name_today():
+    return f"Bak_{date.today().strftime('%Y%m%d')}"
+
+def _list_backup_sheets():
+    """Devuelve lista de hojas de backup ordenadas de más reciente a más antigua."""
+    try:
+        sp = _get_spreadsheet()
+        sheets = [ws for ws in sp.worksheets() if ws.title.startswith("Bak_")]
+        return sorted(sheets, key=lambda x: x.title, reverse=True)
+    except: return []
+
+def _do_backup():
+    """Crea la copia del día si no existe. Devuelve (creada:bool, msg:str)."""
+    try:
+        bname = _backup_name_today()
+        sp = _get_spreadsheet()
+        existing_titles = {ws.title for ws in sp.worksheets()}
+        if bname in existing_titles:
+            return False, f"Ya existe copia de hoy ({bname})"
+        # Leer datos actuales de Leads
+        leads_ws = get_sheet("Leads")
+        all_data = leads_ws.get_all_values()
+        nrows = max(len(all_data) + 10, 50)
+        bak_ws = sp.add_worksheet(title=bname, rows=nrows, cols=len(LEAD_COLS)+2)
+        if all_data:
+            bak_ws.update("A1", all_data)
+        # Purgar copias antiguas
+        bak_sheets = sorted([ws for ws in sp.worksheets() if ws.title.startswith("Bak_")], key=lambda x: x.title)
+        while len(bak_sheets) > BACKUP_MAX:
+            sp.del_worksheet(bak_sheets[0])
+            bak_sheets = bak_sheets[1:]
+        return True, bname
+    except Exception as e:
+        return False, str(e)
+
+def _restore_backup(sheet_name):
+    """Restaura la hoja Leads desde una copia de seguridad."""
+    try:
+        sp = _get_spreadsheet()
+        bak_ws = sp.worksheet(sheet_name)
+        all_data = bak_ws.get_all_values()
+        if not all_data:
+            return False, "La copia está vacía."
+        leads_ws = get_sheet("Leads")
+        leads_ws.clear()
+        leads_ws.update("A1", all_data)
+        load_leads.clear()
+        return True, f"✅ Leads restaurados desde {sheet_name} ({len(all_data)-1} registros)"
+    except Exception as e:
+        return False, str(e)
+
+def _backup_to_json(sheet_name):
+    """Exporta una copia de seguridad como JSON."""
+    import json as _jbak
+    try:
+        sp = _get_spreadsheet()
+        bak_ws = sp.worksheet(sheet_name)
+        rows = bak_ws.get_all_values()
+        if not rows: return None
+        headers, data = rows[0], rows[1:]
+        leads = [dict(zip(headers, row)) for row in data if any(row)]
+        # Deserializar historial
+        for l in leads:
+            raw_h = l.get("historial","")
+            if raw_h:
+                try: l["historial"] = _jbak.loads(raw_h)
+                except: pass
+        return _jbak.dumps({"backup": sheet_name, "fecha_exportacion": str(date.today()), "registros": leads}, ensure_ascii=False, indent=2)
+    except: return None
+
+def _last_backup_date():
+    """Devuelve la fecha del último backup como date, o None."""
+    try:
+        baks = _list_backup_sheets()
+        if not baks: return None
+        name = baks[0].title  # más reciente
+        ds = name[4:12]  # "20260504"
+        return datetime(int(ds[:4]), int(ds[4:6]), int(ds[6:8])).date()
+    except: return None
+
 # ─── CARGAR DATOS ─────────────────────────────────────────────────────────────
 try:
     all_leads_raw = load_leads()
@@ -284,6 +370,12 @@ if _nuevos_pasivos:
     save_config(vendedores, boat_types, sources, archivo_frio, clientes_pasivos)
     for l in _nuevos_pasivos: delete_lead(l["id"])
     all_leads_raw=[l for l in all_leads_raw if l["id"] not in {x["id"] for x in _nuevos_pasivos}]
+
+# Auto-backup diario (una vez por sesión, silencioso)
+if not st.session_state.get("_backup_done"):
+    st.session_state["_backup_done"] = True
+    try: _do_backup()
+    except: pass
 
 # ══ MODO FERIA ════════════════════════════════════════════════════════════════
 if MODO_FERIA:
@@ -352,6 +444,15 @@ with st.sidebar:
     if n_arch>0: st.markdown(f"<div style='background:#1a3050;border-radius:6px;padding:6px 10px;font-size:0.75rem;color:#7a8fa6;margin-bottom:4px'>🧊 Archivo Frío: <b style='color:#e8e0d0'>{n_arch}</b></div>", unsafe_allow_html=True)
     n_pas=len(clientes_pasivos)
     if n_pas>0: st.markdown(f"<div style='background:#1a3050;border-radius:6px;padding:6px 10px;font-size:0.75rem;color:#7a8fa6'>👤 Clientes Pasivos: <b style='color:#e8e0d0'>{n_pas}</b></div>", unsafe_allow_html=True)
+    # Indicador de backup
+    _lbd = _last_backup_date()
+    if _lbd:
+        _dias_bak = (date.today() - _lbd).days
+        _bak_color = "#2d7a2d" if _dias_bak==0 else "#b8860b" if _dias_bak<=3 else "#8b1a1a"
+        _bak_label = "hoy" if _dias_bak==0 else f"hace {_dias_bak}d"
+        st.markdown(f"<div style='background:{_bak_color};border-radius:6px;padding:5px 10px;font-size:0.72rem;color:#e8e0d0;margin-top:4px'>💾 Copia: <b>{_bak_label}</b></div>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div style='background:#8b1a1a;border-radius:6px;padding:5px 10px;font-size:0.72rem;color:#e8e0d0;margin-top:4px'>💾 Sin copias de seguridad</div>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     app_url = st.secrets.get("app_url","https://nauticrm-trn2jrtqldn9vfd4zic6hz.streamlit.app")
     st.markdown(f"<a href='{app_url}/?modo=feria' target='_blank' style='background:#c9a84c;color:#0a1628;padding:8px 14px;border-radius:6px;font-weight:700;font-size:0.8rem;text-decoration:none'>📱 Abrir modo Feria</a>", unsafe_allow_html=True)
@@ -1670,7 +1771,7 @@ elif "Asistente" in page:
 # ══ CONFIG ════════════════════════════════════════════════════════════════════
 elif "Config" in page:
     st.markdown("## ⚙️ Configuración")
-    tab1,tab2,tab3=st.tabs(["👥 Equipo de ventas","🚢 Catálogo de embarcaciones","📡 Fuentes de lead"])
+    tab1,tab2,tab3,tab4=st.tabs(["👥 Equipo de ventas","🚢 Catálogo de embarcaciones","📡 Fuentes de lead","💾 Copias de seguridad"])
     with tab1:
         with st.form("cfg_v"):
             names=[st.text_input(f"Vendedor {i+1}",value=v) for i,v in enumerate(vendedores)]
@@ -1720,6 +1821,69 @@ elif "Config" in page:
                 elif nueva_src.strip() in sources: st.warning("Ya existe.")
         if st.button("↺ Restaurar fuentes por defecto"):
             save_config(vendedores,boat_types,["Feria Náutica","Web","Referido","RRSS","Llamada Fría","Otro"],archivo_frio,clientes_pasivos); st.rerun()
+    with tab4:
+        st.markdown("### 💾 Copias de Seguridad")
+        st.caption(f"Se genera una copia automática cada día al abrir la app. Se conservan las últimas **{BACKUP_MAX}** copias en Google Sheets.")
+
+        # Estado actual
+        _bak_list = _list_backup_sheets()
+        _lbd2 = _last_backup_date()
+        if _lbd2:
+            _dias2 = (date.today() - _lbd2).days
+            _badge = "🟢 Hoy" if _dias2==0 else f"🟡 Hace {_dias2} días" if _dias2<=3 else f"🔴 Hace {_dias2} días"
+            st.success(f"Última copia: **{_lbd2.strftime('%d/%m/%Y')}** — {_badge} · {len(_bak_list)} copias disponibles")
+        else:
+            st.warning("⚠️ Aún no hay copias de seguridad.")
+
+        # Botón copia manual
+        if st.button("📸 Crear copia ahora", use_container_width=False):
+            with st.spinner("Creando copia..."):
+                _created, _msg = _do_backup()
+            if _created: st.success(f"✅ Copia creada: {_msg}")
+            else: st.info(f"ℹ️ {_msg}")
+            st.rerun()
+
+        st.markdown("---")
+        st.markdown("#### 📋 Copias disponibles")
+        if not _bak_list:
+            st.info("No hay copias todavía.")
+        else:
+            for _bws in _bak_list:
+                _bname = _bws.title
+                _bdate_str = _bname[4:12]
+                _bfecha = f"{_bdate_str[6:8]}/{_bdate_str[4:6]}/{_bdate_str[:4]}"
+                _bc1, _bc2, _bc3 = st.columns([3,2,2])
+                _bc1.markdown(f"**{_bfecha}**")
+                # Descargar como JSON
+                _bak_json = _backup_to_json(_bname)
+                if _bak_json:
+                    _bc2.download_button(
+                        "⬇️ JSON",
+                        data=_bak_json.encode("utf-8"),
+                        file_name=f"backup_{_bname}.json",
+                        mime="application/json",
+                        key=f"dl_{_bname}",
+                        use_container_width=True
+                    )
+                # Restaurar (con confirmación)
+                if st.session_state.get("_confirm_restore")==_bname:
+                    st.warning(f"⚠️ ¿Restaurar todos los leads desde **{_bfecha}**? Los datos actuales se sobreescribirán.")
+                    _cr1, _cr2 = st.columns(2)
+                    if _cr1.button("✅ Sí, restaurar", key=f"restore_ok_{_bname}", use_container_width=True):
+                        with st.spinner("Restaurando..."):
+                            _ok, _rmsg = _restore_backup(_bname)
+                        st.session_state.pop("_confirm_restore",None)
+                        if _ok: st.success(_rmsg)
+                        else: st.error(f"❌ Error: {_rmsg}")
+                        st.rerun()
+                    if _cr2.button("❌ Cancelar", key=f"restore_cancel_{_bname}", use_container_width=True):
+                        st.session_state.pop("_confirm_restore",None)
+                        st.rerun()
+                else:
+                    if _bc3.button("↩️ Restaurar", key=f"restore_{_bname}", use_container_width=True):
+                        st.session_state["_confirm_restore"] = _bname
+                        st.rerun()
+
     st.markdown("---")
     st.markdown("##### 📱 Enlace Modo Feria")
     app_url=st.secrets.get("app_url","https://nauticrm-trn2jrtqldn9vfd4zic6hz.streamlit.app")
