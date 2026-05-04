@@ -360,23 +360,50 @@ def _backup_to_github(all_leads, archivo, pasivos):
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28"
         }
-        fname = f"backup_{date.today().strftime('%Y%m%d')}.json"
-        url   = f"https://api.github.com/repos/{repo}/contents/{fname}"
+        base   = f"https://api.github.com/repos/{repo}"
+        fname  = f"backup_{date.today().strftime('%Y%m%d')}.json"
+        url    = f"{base}/contents/{fname}"
 
-        # Si el archivo ya existe hoy, obtener SHA para actualizarlo
+        # Intentar Contents API (funciona si el repo tiene al menos un commit)
         r_get = _req.get(url, headers=headers, timeout=15)
         sha   = r_get.json().get("sha") if r_get.status_code == 200 else None
-
         payload = {"message": f"NautiCRM backup {date.today()}", "content": content_b64}
         if sha: payload["sha"] = sha
         r_put = _req.put(url, headers=headers, json=payload, timeout=20)
 
         if r_put.status_code in [200, 201]:
             return True, f"GitHub: {repo}/{fname}"
-        else:
-            _detail = r_put.json()
-            _errors = _detail.get('errors','')
-            return False, f"Error {r_put.status_code}: {_detail.get('message','')} {_errors} | token:{token[:12]}... repo:{repo}"
+
+        # Si falla (repo vacío sin commits), usar Git Data API de bajo nivel
+        if r_put.status_code == 404:
+            # 1. Crear blob
+            rb = _req.post(f"{base}/git/blobs", headers=headers,
+                           json={"content": content_b64, "encoding": "base64"}, timeout=15)
+            if rb.status_code != 201:
+                return False, f"Git blob error {rb.status_code}: {rb.json().get('message','')}"
+            blob_sha = rb.json()["sha"]
+            # 2. Crear tree
+            rt = _req.post(f"{base}/git/trees", headers=headers,
+                           json={"tree": [{"path": fname, "mode": "100644", "type": "blob", "sha": blob_sha}]}, timeout=15)
+            if rt.status_code != 201:
+                return False, f"Git tree error {rt.status_code}: {rt.json().get('message','')}"
+            tree_sha = rt.json()["sha"]
+            # 3. Crear commit
+            rc = _req.post(f"{base}/git/commits", headers=headers,
+                           json={"message": f"NautiCRM backup {date.today()}", "tree": tree_sha}, timeout=15)
+            if rc.status_code != 201:
+                return False, f"Git commit error {rc.status_code}: {rc.json().get('message','')}"
+            commit_sha = rc.json()["sha"]
+            # 4. Crear rama main
+            rr = _req.post(f"{base}/git/refs", headers=headers,
+                           json={"ref": "refs/heads/main", "sha": commit_sha}, timeout=15)
+            if rr.status_code in [200, 201]:
+                return True, f"GitHub: {repo}/{fname} (repo inicializado)"
+            else:
+                return False, f"Git ref error {rr.status_code}: {rr.json().get('message','')}"
+
+        _detail = r_put.json()
+        return False, f"Error {r_put.status_code}: {_detail.get('message','')} {_detail.get('errors','')}"
     except Exception as e:
         return False, str(e)
 
