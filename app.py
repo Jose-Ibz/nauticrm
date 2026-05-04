@@ -334,6 +334,28 @@ if my_portfolio: leads=[l for l in leads if l["asignadoA"]==active_user]
 
 # ══ KANBAN ════════════════════════════════════════════════════════════════════
 if "Kanban" in page:
+    # ── Motivo de cierre / pausa pendiente ────────────────────────────────────
+    if st.session_state.get("pending_causa"):
+        _pc=st.session_state["pending_causa"]
+        _es_perdido=_pc["etapa"]=="Cerrado Perdido"
+        st.warning(f"{'❌ Cierre como perdido' if _es_perdido else '⏸️ Pasar a pausa'}: **{_pc['nombre']}**")
+        _causa_k=st.text_area("¿Cuál es el motivo?" + (" (precio, competencia, sin presupuesto...)" if _es_perdido else " (aplaza decisión, fuera de temporada...)"),
+                               key="causa_k_input", height=90)
+        _kc1,_kc2=st.columns(2)
+        if _kc1.button("✅ Confirmar y guardar", use_container_width=True, key="causa_k_ok"):
+            _lead_pc=_pc["lead"]
+            _hist_pc=_lead_pc.get("historial",[]).copy()
+            _tipo_pc="Cierre perdido" if _es_perdido else "Pausa"
+            _hist_pc.append({"fecha":str(date.today()),"tipo":_tipo_pc,"nota":_causa_k.strip() or "Sin motivo indicado"})
+            _lead_pc["historial"]=_hist_pc
+            save_lead(_lead_pc,is_new=False)
+            st.session_state["pending_causa"]=None
+            st.rerun()
+        if _kc2.button("↩ Cancelar", use_container_width=True, key="causa_k_cancel"):
+            st.session_state["pending_causa"]=None
+            st.rerun()
+        st.stop()
+
     st.markdown("## ⊞ Funnel de Ventas")
     st.markdown("<br>", unsafe_allow_html=True)
     funnel_leads=[l for l in leads if l["etapa"] in FUNNEL_STAGES]
@@ -377,8 +399,12 @@ if "Kanban" in page:
             if sel_k!="— Selecciona —":
                 lead_upd=next(l for l in all_leads_raw if l["nombre"]==sel_k)
                 lead_upd["etapa"]=nueva_etapa; lead_upd["ultimaActualizacion"]=str(date.today())
-                save_lead(lead_upd, is_new=False)
-                st.success(f"✅ {sel_k} → {nueva_etapa}"); st.rerun()
+                if nueva_etapa in ["Cerrado Perdido","En Pausa / Recuperable"]:
+                    st.session_state["pending_causa"]={"lead":lead_upd,"nombre":sel_k,"etapa":nueva_etapa}
+                else:
+                    save_lead(lead_upd, is_new=False)
+                    st.success(f"✅ {sel_k} → {nueva_etapa}")
+                st.rerun()
 
     st.markdown("<div style='margin:8px 0 16px;padding:8px 14px;background:#0d1e35;border:1px solid #1a3050;border-radius:8px;font-size:0.78rem;color:#7a8fa6'>🔴 Vencida &nbsp;|&nbsp; 🟡 Hoy &nbsp;|&nbsp; 🟢 Futura &nbsp;|&nbsp; ⚪ Sin fecha asignada</div>", unsafe_allow_html=True)
     st.markdown("<hr style='border-color:#1a3050'>", unsafe_allow_html=True)
@@ -774,6 +800,29 @@ Sé directo, usa datos concretos del informe y enfócate en lo accionable. Forma
 elif "Lead" in page:
     st.markdown("## ➕ Nuevo / Editar Lead")
 
+    # ── Motivo de cierre / pausa pendiente ───────────────────────────────────
+    if st.session_state.get("pending_causa"):
+        _pc=st.session_state["pending_causa"]
+        _es_perdido=_pc["etapa"]=="Cerrado Perdido"
+        st.warning(f"{'❌ Cierre como perdido' if _es_perdido else '⏸️ Pasar a pausa'}: **{_pc['nombre']}**")
+        _causa_f=st.text_area("¿Cuál es el motivo?" + (" (precio, competencia, sin presupuesto...)" if _es_perdido else " (aplaza decisión, fuera de temporada...)"),
+                               key="causa_f_input", height=90)
+        _fc1,_fc2=st.columns(2)
+        if _fc1.button("✅ Confirmar y guardar", use_container_width=True, key="causa_f_ok"):
+            _lead_pc=_pc["lead"]
+            _hist_pc=_lead_pc.get("historial",[]).copy()
+            _tipo_pc="Cierre perdido" if _es_perdido else "Pausa"
+            _hist_pc.append({"fecha":str(date.today()),"tipo":_tipo_pc,"nota":_causa_f.strip() or "Sin motivo indicado"})
+            _lead_pc["historial"]=_hist_pc
+            save_lead(_lead_pc,is_new=False)
+            st.session_state["pending_causa"]=None
+            st.session_state["_nav_request"]="⊞ Funnel Kanban"
+            st.rerun()
+        if _fc2.button("↩ Cancelar", use_container_width=True, key="causa_f_cancel"):
+            st.session_state["pending_causa"]=None
+            st.rerun()
+        st.stop()
+
     # ── Confirmación de borrado (prioridad máxima, bloquea el resto) ──────────
     if st.session_state.get("pending_delete_id"):
         _del_id     = st.session_state["pending_delete_id"]
@@ -814,7 +863,11 @@ elif "Lead" in page:
         etapa_r=c1.selectbox("Nueva etapa",STAGES,index=STAGES.index(existing["etapa"]) if existing["etapa"] in STAGES else 0,key="etapa_r")
         if c2.button("✅ Actualizar"):
             existing["etapa"]=etapa_r; existing["ultimaActualizacion"]=str(date.today())
-            save_lead(existing,is_new=False); st.success(f"✅ → {etapa_r}"); st.rerun()
+            if etapa_r in ["Cerrado Perdido","En Pausa / Recuperable"]:
+                st.session_state["pending_causa"]={"lead":existing,"nombre":existing["nombre"],"etapa":etapa_r}
+            else:
+                save_lead(existing,is_new=False); st.success(f"✅ → {etapa_r}")
+            st.rerun()
         st.markdown("---")
     if st.session_state.get("_ultimo_guardado"):
         st.success(f"✅ Lead **{st.session_state['_ultimo_guardado']}** guardado correctamente.")
@@ -853,10 +906,13 @@ elif "Lead" in page:
             else:
                 st.session_state["_guardando"] = True
                 new_lead={"id":d.get("id","") or str(uuid.uuid4()),"nombre":nombre,"empresa":empresa,"telefono":tel,"email":email,"idioma":idioma,"tipoEmbarcacion":tipo,"modeloEslora":modelo,"presupuesto":int(valor),"usoPrevisto":uso,"asignadoA":asig,"etapa":etapa,"probabilidad":int(prob),"valorOperacion":int(valor),"fuenteLead":fuente,"proximaAccion":prox_a,"fechaProximaAccion":str(prox_d),"historial":d.get("historial",[]),"fechaCreacion":d.get("fechaCreacion","") or str(date.today()),"ultimaActualizacion":str(date.today())}
-                save_lead(new_lead,is_new=not bool(existing))
                 st.session_state["_guardando"] = False
-                st.session_state["_ultimo_guardado"] = nombre
-                st.session_state["_sel_lead_request"] = nombre
+                if etapa in ["Cerrado Perdido","En Pausa / Recuperable"]:
+                    st.session_state["pending_causa"]={"lead":new_lead,"nombre":nombre,"etapa":etapa}
+                else:
+                    save_lead(new_lead,is_new=not bool(existing))
+                    st.session_state["_ultimo_guardado"] = nombre
+                    st.session_state["_sel_lead_request"] = nombre
                 st.rerun()
 
     if existing:
