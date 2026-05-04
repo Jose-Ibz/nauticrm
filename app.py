@@ -162,7 +162,13 @@ def load_config():
         import json
         try: archivo = json.loads(arch_row[0])
         except: archivo = []
-    return vendedores, boat_types, sources, archivo
+    pasivos = []
+    pas_row = df[df["key"]=="clientes_pasivos"]["value"].tolist()
+    if pas_row and pas_row[0]:
+        import json
+        try: pasivos = json.loads(pas_row[0])
+        except: pasivos = []
+    return vendedores, boat_types, sources, archivo, pasivos
 
 def save_lead(lead, is_new=True):
     ws = get_sheet("Leads")
@@ -205,7 +211,7 @@ def con_cambio_etapa(lead_dict, etapa_anterior):
         return {**lead_dict,"historial":hist}
     return lead_dict
 
-def save_config(vendedores, boat_types, sources, archivo):
+def save_config(vendedores, boat_types, sources, archivo, pasivos=None):
     import json
     ws = get_sheet("Config")
     ws.clear()
@@ -217,6 +223,7 @@ def save_config(vendedores, boat_types, sources, archivo):
         ["boat_types", "||".join(boat_types)],
         ["sources", "||".join(sources)],
         ["archivo_frio", json.dumps(archivo, ensure_ascii=False)],
+        ["clientes_pasivos", json.dumps(pasivos or [], ensure_ascii=False)],
     ]
     ws.update("A1", rows)
     load_config.clear()
@@ -247,7 +254,7 @@ def months_since(ds):
 # ─── CARGAR DATOS ─────────────────────────────────────────────────────────────
 try:
     all_leads_raw = load_leads()
-    vendedores, boat_types, sources, archivo_frio = load_config()
+    vendedores, boat_types, sources, archivo_frio, clientes_pasivos = load_config()
 except Exception as e:
     st.error(f"❌ Error conectando con Google Sheets: {e}")
     st.info("Comprueba que los Secrets están bien configurados en Streamlit Cloud.")
@@ -265,9 +272,18 @@ def auto_archivar(leads):
 activos, nuevos_arch = auto_archivar(all_leads_raw)
 if nuevos_arch:
     archivo_frio.extend(nuevos_arch)
-    save_config(vendedores, boat_types, archivo_frio)
+    save_config(vendedores, boat_types, sources, archivo_frio, clientes_pasivos)
     for l in nuevos_arch: delete_lead(l["id"])
     all_leads_raw = activos
+
+# Auto-pasar a pasivo: Cerrado Ganado con 12+ meses
+_nuevos_pasivos=[l for l in all_leads_raw
+    if l.get("etapa")=="Cerrado Ganado" and months_since(l.get("ultimaActualizacion") or l.get("fechaCreacion",""))>=12]
+if _nuevos_pasivos:
+    clientes_pasivos.extend([{**l,"fechaPasivo":str(date.today())} for l in _nuevos_pasivos])
+    save_config(vendedores, boat_types, sources, archivo_frio, clientes_pasivos)
+    for l in _nuevos_pasivos: delete_lead(l["id"])
+    all_leads_raw=[l for l in all_leads_raw if l["id"] not in {x["id"] for x in _nuevos_pasivos}]
 
 # ══ MODO FERIA ════════════════════════════════════════════════════════════════
 if MODO_FERIA:
@@ -333,7 +349,9 @@ with st.sidebar:
     st.markdown("---")
     if st.button("🔄 Actualizar datos"): load_leads.clear(); load_config.clear(); st.rerun()
     n_arch=len(archivo_frio)
-    if n_arch>0: st.markdown(f"<div style='background:#1a3050;border-radius:6px;padding:6px 10px;font-size:0.75rem;color:#7a8fa6'>🧊 Archivo Frío: <b style='color:#e8e0d0'>{n_arch}</b></div>", unsafe_allow_html=True)
+    if n_arch>0: st.markdown(f"<div style='background:#1a3050;border-radius:6px;padding:6px 10px;font-size:0.75rem;color:#7a8fa6;margin-bottom:4px'>🧊 Archivo Frío: <b style='color:#e8e0d0'>{n_arch}</b></div>", unsafe_allow_html=True)
+    n_pas=len(clientes_pasivos)
+    if n_pas>0: st.markdown(f"<div style='background:#1a3050;border-radius:6px;padding:6px 10px;font-size:0.75rem;color:#7a8fa6'>👤 Clientes Pasivos: <b style='color:#e8e0d0'>{n_pas}</b></div>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     app_url = st.secrets.get("app_url","https://nauticrm-trn2jrtqldn9vfd4zic6hz.streamlit.app")
     st.markdown(f"<a href='{app_url}/?modo=feria' target='_blank' style='background:#c9a84c;color:#0a1628;padding:8px 14px;border-radius:6px;font-weight:700;font-size:0.8rem;text-decoration:none'>📱 Abrir modo Feria</a>", unsafe_allow_html=True)
@@ -1205,6 +1223,17 @@ elif "Lead" in page:
             _altura = min(900, 480 + _n_hist * 40)
             _comp.html(_ficha_html(existing), height=_altura, scrolling=True)
 
+        if existing.get("etapa")=="Cerrado Ganado":
+            st.markdown("---")
+            st.markdown("<div style='color:#7a8fa6;font-size:0.8rem'>Este cliente ha cerrado operación. Si ya no va a comprar más (se ha ido de Ibiza, etc.) puedes pasarlo a pasivo: saldrá del pipeline pero sus datos quedan en la BBDD histórica.</div>", unsafe_allow_html=True)
+            if st.button("👤 Pasar a cliente pasivo", use_container_width=True):
+                clientes_pasivos.append({**existing,"fechaPasivo":str(date.today())})
+                save_config(vendedores, boat_types, sources, archivo_frio, clientes_pasivos)
+                delete_lead(existing["id"])
+                st.session_state["_nav_request"]="⊞ Funnel Kanban"
+                st.success(f"✅ {existing['nombre']} pasado a clientes pasivos.")
+                st.rerun()
+
         st.markdown("---")
         if st.button("🗑️ Eliminar este lead"):
             st.session_state["pending_delete_id"]     = existing["id"]
@@ -1326,8 +1355,50 @@ elif "Acciones" in page:
 
 # ══ ARCHIVO FRÍO ══════════════════════════════════════════════════════════════
 elif "Archivo" in page:
-    st.markdown("## 🧊 Archivo Frío")
-    st.markdown("Contactos en pausa más de **6 meses**.")
+    st.markdown("## 🧊 Archivo Frío & Clientes Pasivos")
+    _tab_arch, _tab_pas = st.tabs([f"🧊 Archivo Frío ({len(archivo_frio)})", f"👤 Clientes Pasivos ({len(clientes_pasivos)})"])
+    with _tab_pas:
+        st.markdown("Clientes que han comprado pero ya no están en el circuito activo de ventas. Sus datos quedan disponibles para informes históricos.")
+        if not clientes_pasivos:
+            st.info("No hay clientes pasivos todavía.")
+        else:
+            _rows_p=[{"Nombre":l.get("nombre",""),"Empresa":l.get("empresa",""),
+                "Embarcación":f"{l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')}".strip(),
+                "Valor €":fmt_eur(l.get("valorOperacion",0)),
+                "Email":l.get("email",""),"Teléfono":l.get("telefono",""),
+                "Alta CRM":l.get("fechaCreacion",""),"Pasivo desde":l.get("fechaPasivo","")} for l in clientes_pasivos]
+            st.dataframe(pd.DataFrame(_rows_p),use_container_width=True,hide_index=True)
+            st.markdown("---"); st.markdown("**♻️ Reactivar cliente pasivo**")
+            _sel_p=st.selectbox("Seleccionar",["— Selecciona —"]+[l["nombre"] for l in clientes_pasivos],key="sel_pasivo")
+            if _sel_p!="— Selecciona —" and st.button("♻️ Reactivar como Prospecto",key="btn_react_pas"):
+                _lp=next(l for l in clientes_pasivos if l["nombre"]==_sel_p)
+                _nl={**_lp,"etapa":"Prospecto","ultimaActualizacion":str(date.today())}
+                _nl.pop("fechaPasivo",None)
+                save_lead(_nl,is_new=True)
+                _cp_nuevo=[l for l in clientes_pasivos if l["nombre"]!=_sel_p]
+                save_config(vendedores,boat_types,sources,archivo_frio,_cp_nuevo)
+                st.success(f"✅ {_sel_p} reactivado como Prospecto."); st.rerun()
+    with _tab_arch:
+        st.markdown("Contactos en pausa más de **6 meses**.")
+        if st.session_state.get("pending_arch"):
+            _pa=st.session_state["pending_arch"]
+            st.warning(f"⚠️ Archivando a **{_pa['nombre']}**")
+            _motivo_a=st.text_area("Motivo del archivo frío (obligatorio)",placeholder="Ej: Sin interés por precio, barco vendido, sin respuesta prolongada...",key="motivo_arch_input")
+            _pac1,_pac2=st.columns(2)
+            if _pac1.button("✅ Confirmar archivo",key="btn_conf_arch",use_container_width=True):
+                if not _motivo_a.strip():
+                    st.error("Indica el motivo antes de archivar.")
+                else:
+                    _l_arch={**_pa["lead"],"fechaArchivo":str(date.today()),"motivoArchivo":_motivo_a.strip()}
+                    archivo_frio.append(_l_arch)
+                    save_config(vendedores,boat_types,sources,archivo_frio,clientes_pasivos)
+                    delete_lead(_pa["lead"]["id"])
+                    st.session_state.pop("pending_arch",None)
+                    st.rerun()
+            if _pac2.button("❌ Cancelar",key="btn_cancel_arch",use_container_width=True):
+                st.session_state.pop("pending_arch",None)
+                st.rerun()
+            st.stop()
     pausados=[l for l in all_leads_raw if l.get("etapa")=="En Pausa / Recuperable"]
     if pausados:
         with st.expander(f"📥 Archivar manualmente ({len(pausados)} en pausa)"):
@@ -1335,9 +1406,7 @@ elif "Archivo" in page:
                 c1,c2=st.columns([4,1])
                 c1.markdown(f"**{l['nombre']}** — {l['empresa']} · {months_since(l.get('ultimaActualizacion') or l.get('fechaCreacion',''))} meses")
                 if c2.button("Archivar",key=f"arch_{l['id']}"):
-                    archivo_frio.append({**l,"fechaArchivo":str(date.today())})
-                    save_config(vendedores,boat_types,sources,archivo_frio)
-                    delete_lead(l["id"]); st.rerun()
+                    st.session_state["pending_arch"]={"lead":l,"nombre":l["nombre"]}
     if not archivo_frio: st.info("El archivo frío está vacío.")
     else:
         st.markdown("#### 🔎 Segmentación")
@@ -1369,7 +1438,8 @@ elif "Archivo" in page:
             "Embarcación":f"{l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')}".strip(),
             "Valor €":fmt_eur(l.get("valorOperacion",0) or l.get("presupuesto",0)),
             "Email":l.get("email",""),"Teléfono":l.get("telefono",""),
-            "Vendedor":l.get("asignadoA",""),"Archivado":l.get("fechaArchivo","")
+            "Vendedor":l.get("asignadoA",""),"Archivado":l.get("fechaArchivo",""),
+            "Motivo":l.get("motivoArchivo","")
         } for l in filtrado]
         st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
 
@@ -1398,7 +1468,7 @@ elif "Archivo" in page:
             nuevo_lead.pop("fechaArchivo",None)
             save_lead(nuevo_lead,is_new=True)
             archivo_frio_nuevo=[l for l in archivo_frio if l["nombre"]!=sel_r]
-            save_config(vendedores,boat_types,sources,archivo_frio_nuevo)
+            save_config(vendedores,boat_types,sources,archivo_frio_nuevo,clientes_pasivos)
             st.success(f"✅ {sel_r} reactivado."); st.rerun()
 
 # ══ CONFIG ════════════════════════════════════════════════════════════════════
@@ -1409,7 +1479,7 @@ elif "Config" in page:
         with st.form("cfg_v"):
             names=[st.text_input(f"Vendedor {i+1}",value=v) for i,v in enumerate(vendedores)]
             if st.form_submit_button("💾 Guardar nombres"):
-                save_config(names,boat_types,sources,archivo_frio); st.success("✅ Actualizado."); st.rerun()
+                save_config(names,boat_types,sources,archivo_frio,clientes_pasivos); st.success("✅ Actualizado."); st.rerun()
     with tab2:
         st.caption("Gestiona los valores del desplegable de embarcación.")
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1421,17 +1491,17 @@ elif "Config" in page:
                 if c2.button("✕",key=f"del_{i}"): to_delete=bt
         if to_delete:
             new_bt=[x for x in boat_types if x!=to_delete]
-            save_config(vendedores,new_bt,sources,archivo_frio); st.rerun()
+            save_config(vendedores,new_bt,sources,archivo_frio,clientes_pasivos); st.rerun()
         st.markdown("<br>", unsafe_allow_html=True)
         with st.form("cfg_b"):
             c1,c2=st.columns([3,1])
             nueva=c1.text_input("Nueva marca/tipo",placeholder="Ej: Hallberg-Rassy, Dufour...",label_visibility="collapsed")
             if c2.form_submit_button("➕ Añadir"):
                 if nueva.strip() and nueva.strip() not in boat_types:
-                    save_config(vendedores,boat_types+[nueva.strip()],sources,archivo_frio); st.success(f"✅ '{nueva.strip()}' añadido."); st.rerun()
+                    save_config(vendedores,boat_types+[nueva.strip()],sources,archivo_frio,clientes_pasivos); st.success(f"✅ '{nueva.strip()}' añadido."); st.rerun()
                 elif nueva.strip() in boat_types: st.warning("Ya existe.")
         if st.button("↺ Restaurar por defecto"):
-            save_config(vendedores,["Velero","Motor","Catamarán","Zodiac","Charter","Jeanneau","Beneteau","Sunseeker","Princess","Azimut","Ferretti","Bavaria","Hanse","Lagoon","Otro"],sources,archivo_frio); st.rerun()
+            save_config(vendedores,["Velero","Motor","Catamarán","Zodiac","Charter","Jeanneau","Beneteau","Sunseeker","Princess","Azimut","Ferretti","Bavaria","Hanse","Lagoon","Otro"],sources,archivo_frio,clientes_pasivos); st.rerun()
     with tab3:
         st.caption("Gestiona los valores del desplegable de fuente de lead.")
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1443,17 +1513,17 @@ elif "Config" in page:
                 if c2.button("✕",key=f"del_src_{i}"): to_delete_src=src
         if to_delete_src:
             new_src=[x for x in sources if x!=to_delete_src]
-            save_config(vendedores,boat_types,new_src,archivo_frio); st.rerun()
+            save_config(vendedores,boat_types,new_src,archivo_frio,clientes_pasivos); st.rerun()
         st.markdown("<br>", unsafe_allow_html=True)
         with st.form("cfg_src"):
             c1,c2=st.columns([3,1])
             nueva_src=c1.text_input("Nueva fuente",placeholder="Ej: LinkedIn, Partner, Evento...",label_visibility="collapsed")
             if c2.form_submit_button("➕ Añadir"):
                 if nueva_src.strip() and nueva_src.strip() not in sources:
-                    save_config(vendedores,boat_types,sources+[nueva_src.strip()],archivo_frio); st.success(f"✅ '{nueva_src.strip()}' añadido."); st.rerun()
+                    save_config(vendedores,boat_types,sources+[nueva_src.strip()],archivo_frio,clientes_pasivos); st.success(f"✅ '{nueva_src.strip()}' añadido."); st.rerun()
                 elif nueva_src.strip() in sources: st.warning("Ya existe.")
         if st.button("↺ Restaurar fuentes por defecto"):
-            save_config(vendedores,boat_types,["Feria Náutica","Web","Referido","RRSS","Llamada Fría","Otro"],archivo_frio); st.rerun()
+            save_config(vendedores,boat_types,["Feria Náutica","Web","Referido","RRSS","Llamada Fría","Otro"],archivo_frio,clientes_pasivos); st.rerun()
     st.markdown("---")
     st.markdown("##### 📱 Enlace Modo Feria")
     app_url=st.secrets.get("app_url","https://nauticrm-trn2jrtqldn9vfd4zic6hz.streamlit.app")
