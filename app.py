@@ -611,10 +611,9 @@ elif "Lead" in page:
         tel  =c4.text_input("Teléfono",value=d.get("telefono",""))
         email=c5.text_input("Email",value=d.get("email",""))
         st.markdown("### 🚢 Embarcación de Interés")
-        c6,c7,c8=st.columns(3)
+        c6,c7=st.columns(2)
         tipo  =c6.selectbox("Tipo / Marca",boat_types,index=boat_types.index(d["tipoEmbarcacion"]) if d.get("tipoEmbarcacion") in boat_types else 0)
         modelo=c7.text_input("Modelo / Eslora",value=d.get("modeloEslora",""))
-        presu =c8.number_input("Presupuesto (€)",value=float(d.get("presupuesto",0) or 0),min_value=0.0,step=5000.0)
         uso   =st.text_input("Uso previsto",value=d.get("usoPrevisto",""))
         st.markdown("### 📋 Gestión Comercial")
         c9,c10,c11,c12=st.columns(4)
@@ -634,7 +633,7 @@ elif "Lead" in page:
                 st.warning("⏳ Guardando, por favor espera...")
             else:
                 st.session_state["_guardando"] = True
-                new_lead={"id":d.get("id","") or str(uuid.uuid4()),"nombre":nombre,"empresa":empresa,"telefono":tel,"email":email,"idioma":idioma,"tipoEmbarcacion":tipo,"modeloEslora":modelo,"presupuesto":int(presu),"usoPrevisto":uso,"asignadoA":asig,"etapa":etapa,"probabilidad":int(prob),"valorOperacion":int(valor),"fuenteLead":fuente,"proximaAccion":prox_a,"fechaProximaAccion":str(prox_d),"historial":d.get("historial",[]),"fechaCreacion":d.get("fechaCreacion","") or str(date.today()),"ultimaActualizacion":str(date.today())}
+                new_lead={"id":d.get("id","") or str(uuid.uuid4()),"nombre":nombre,"empresa":empresa,"telefono":tel,"email":email,"idioma":idioma,"tipoEmbarcacion":tipo,"modeloEslora":modelo,"presupuesto":int(valor),"usoPrevisto":uso,"asignadoA":asig,"etapa":etapa,"probabilidad":int(prob),"valorOperacion":int(valor),"fuenteLead":fuente,"proximaAccion":prox_a,"fechaProximaAccion":str(prox_d),"historial":d.get("historial",[]),"fechaCreacion":d.get("fechaCreacion","") or str(date.today()),"ultimaActualizacion":str(date.today())}
                 save_lead(new_lead,is_new=not bool(existing))
                 st.session_state["_guardando"] = False
                 st.session_state["_ultimo_guardado"] = nombre
