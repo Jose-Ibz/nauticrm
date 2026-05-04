@@ -719,18 +719,25 @@ elif "Acciones" in page:
         except: sec,dias_txt,dtcol="⚪ Sin fecha","Sin fecha","#7a8fa6"
         if sec!=current_sec: current_sec=sec; st.markdown(f"### {sec}")
         color=STAGE_COLORS.get(l["etapa"],"#1a3050")
-        st.markdown(f"""<div style="background:#0d1e35;border:1px solid #1a3050;border-left:4px solid {color};border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-            <div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-                <span style="color:#e8e0d0;font-weight:700;font-size:0.88rem">{l['nombre']}</span>
-                <span style="background:{color};color:white;border-radius:10px;padding:1px 8px;font-size:0.62rem;font-weight:700">{l['etapa']}</span>
-                <span style="color:#7a8fa6;font-size:0.72rem">{l['asignadoA'].replace('Vendedor','V.')}</span></div>
-            <div style="color:#c9a84c;font-size:0.82rem;margin-bottom:3px">↳ {l.get('proximaAccion','Sin descripción')}</div>
-            <div style="color:#7a8fa6;font-size:0.72rem">{l.get('empresa','')} · {l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')}</div></div>
-            <div style="text-align:right;flex-shrink:0;margin-left:16px">
-                <div style="color:#e8e0d0;font-size:0.82rem;font-weight:700">{l.get('fechaProximaAccion','—')}</div>
-                <div style="font-size:0.72rem;color:{dtcol}">{dias_txt}</div>
-                <div style="color:#2ecc71;font-family:monospace;font-size:0.72rem;margin-top:2px">{fmt_eur(l.get('valorOperacion',0))}</div>
-            </div></div>""", unsafe_allow_html=True)
+        _pc1,_pc2=st.columns([11,1])
+        with _pc1:
+            st.markdown(f"""<div style="background:#0d1e35;border:1px solid #1a3050;border-left:4px solid {color};border-radius:8px;padding:12px 16px;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center">
+                <div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+                    <span style="color:#e8e0d0;font-weight:700;font-size:0.88rem">{l['nombre']}</span>
+                    <span style="background:{color};color:white;border-radius:10px;padding:1px 8px;font-size:0.62rem;font-weight:700">{l['etapa']}</span>
+                    <span style="color:#7a8fa6;font-size:0.72rem">{l['asignadoA'].replace('Vendedor','V.')}</span></div>
+                <div style="color:#c9a84c;font-size:0.82rem;margin-bottom:3px">↳ {l.get('proximaAccion','Sin descripción')}</div>
+                <div style="color:#7a8fa6;font-size:0.72rem">{l.get('empresa','')} · {l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')}</div></div>
+                <div style="text-align:right;flex-shrink:0;margin-left:16px">
+                    <div style="color:#e8e0d0;font-size:0.82rem;font-weight:700">{l.get('fechaProximaAccion','—')}</div>
+                    <div style="font-size:0.72rem;color:{dtcol}">{dias_txt}</div>
+                    <div style="color:#2ecc71;font-family:monospace;font-size:0.72rem;margin-top:2px">{fmt_eur(l.get('valorOperacion',0))}</div>
+                </div></div>""", unsafe_allow_html=True)
+        with _pc2:
+            if st.button("✏️", key=f"pa_{l['id']}", help="Ir a ficha y registrar actividad"):
+                st.session_state["goto_lead"] = l["nombre"]
+                st.session_state["nav_page"]  = "➕ Nuevo / Editar Lead"
+                st.rerun()
     if sin_accion:
         st.markdown("---"); st.markdown("### ⚪ Sin próxima acción")
         for l in sin_accion:
