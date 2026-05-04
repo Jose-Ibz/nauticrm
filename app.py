@@ -380,6 +380,7 @@ if "Kanban" in page:
                 save_lead(lead_upd, is_new=False)
                 st.success(f"✅ {sel_k} → {nueva_etapa}"); st.rerun()
 
+    st.markdown("<div style='margin:8px 0 16px;padding:8px 14px;background:#0d1e35;border:1px solid #1a3050;border-radius:8px;font-size:0.78rem;color:#7a8fa6'>🔴 Vencida &nbsp;|&nbsp; 🟡 Hoy &nbsp;|&nbsp; 🟢 Futura &nbsp;|&nbsp; ⚪ Sin fecha asignada</div>", unsafe_allow_html=True)
     st.markdown("<hr style='border-color:#1a3050'>", unsafe_allow_html=True)
     bc1,bc2,bc3=st.columns(3)
     for col,stage in zip([bc1,bc2,bc3],["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"]):
@@ -400,7 +401,6 @@ if "Kanban" in page:
                     <div style="color:#7a8fa6;font-size:0.62rem">{l['empresa']}·{fmt_eur(l.get('valorOperacion',0))}</div></div>""", unsafe_allow_html=True)
             if len(cards)>5: st.markdown(f"<small style='color:#7a8fa6;padding:0 5px'>+{len(cards)-5} más</small>", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("<div style='margin-top:12px;padding:8px 14px;background:#0d1e35;border:1px solid #1a3050;border-radius:8px;font-size:0.72rem;color:#7a8fa6'>🔴 Vencida &nbsp;|&nbsp; 🟡 Hoy &nbsp;|&nbsp; 🟢 Futura &nbsp;|&nbsp; ⚪ Sin fecha</div>", unsafe_allow_html=True)
 
 # ══ LISTA ══════════════════════════════════════════════════════════════════════
 elif "Lista" in page:
