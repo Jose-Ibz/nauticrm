@@ -490,7 +490,7 @@ elif "Informes" in page:
     k3.metric("Forecast Mensual",fmt_eur(forecast),"Valor × Prob%")
     k4.metric("Sin actividad +7d",len(no_act),delta="⚠️ Revisar" if no_act else "✅ OK",delta_color="off")
     st.markdown("<br>", unsafe_allow_html=True)
-    tab1,tab2,tab3,tab4,tab5=st.tabs(["🔻 Embudo","📊 Pipeline & Fuentes","📋 Actividad","🤖 Informe IA","📖 Diario"])
+    tab1,tab2,tab3,tab4=st.tabs(["🔻 Embudo","📊 Pipeline & Fuentes","🤖 Informe IA","📖 Diario"])
     with tab1:
         st.markdown("#### Embudo de Ventas")
         # Todas las etapas: funnel normal + cerrados/pausa con <13 meses
@@ -578,23 +578,6 @@ elif "Informes" in page:
         fig3.update_layout(plot_bgcolor="#091220",paper_bgcolor="#0d1e35",font_color="#e8e0d0",showlegend=False,xaxis=dict(gridcolor="#1a3050"),yaxis=dict(gridcolor="#1a3050"),margin=dict(t=10,b=10,l=10,r=10),height=220)
         fig3.update_traces(textposition="outside",textfont_color="white"); st.plotly_chart(fig3,use_container_width=True)
     with tab3:
-        c1,c2=st.columns(2)
-        with c1:
-            st.markdown("#### Actividad Reciente")
-            hist_all=[]
-            for l in all_leads_raw:
-                for h in l.get("historial",[]): hist_all.append({**h,"lead":l["nombre"]})
-            hist_all.sort(key=lambda x:x["fecha"],reverse=True)
-            for h in hist_all[:10]:
-                st.markdown(f"<div style='padding:7px 0;border-bottom:1px solid #1a3050'><span style='color:#c9a84c;font-size:0.78rem;font-weight:700'>{h['lead']}</span><span style='color:#7a8fa6;font-size:0.72rem'> · {h['fecha']}</span><span style='background:#1a3050;color:#7a8fa6;border-radius:4px;padding:1px 5px;font-size:0.65rem;margin-left:5px'>{h['tipo']}</span><div style='color:#e8e0d0;font-size:0.78rem;margin-top:3px'>{h['nota']}</div></div>", unsafe_allow_html=True)
-        with c2:
-            st.markdown("#### Sin actividad +7 días")
-            if not no_act: st.success("✅ Todo al día.")
-            else:
-                for l in no_act:
-                    d=days_since(l.get("ultimaActualizacion","") or l.get("fechaCreacion",""))
-                    st.markdown(f"<div style='display:flex;justify-content:space-between;padding:6px 10px;margin-bottom:5px;background:#0d1e35;border:1px solid #e74c3c33;border-radius:6px'><span style='color:#e8e0d0;font-size:0.82rem'>{l['nombre']}</span><span style='color:#e74c3c;font-size:0.78rem'>{d}d·{l['asignadoA'].replace('Vendedor','V.')}</span></div>", unsafe_allow_html=True)
-    with tab4:
         st.markdown("#### 🤖 Informe IA — Análisis y Patrones")
         st.markdown("<div style='color:#7a8fa6;font-size:0.82rem;margin-bottom:16px'>Claude analiza todos los datos del CRM y detecta patrones, tendencias y oportunidades de mejora.</div>",unsafe_allow_html=True)
 
@@ -808,7 +791,7 @@ Sé directo, usa datos concretos del informe y enfócate en lo accionable. Forma
                 except Exception as _e:
                     st.error(f"Error al generar el informe: {_e}")
 
-    with tab5:
+    with tab4:
         st.markdown("#### 📖 Diario de actividad")
         _dcol1,_dcol2,_dcol3=st.columns([1,1,2])
         _diario_desde=_dcol1.date_input("Desde",value=date.today()-timedelta(days=30),key="diario_desde")
@@ -895,9 +878,61 @@ Sé directo, usa datos concretos del informe y enfócate en lo accionable. Forma
         _altura_d=min(2600, max(400, len(_eventos)*38+200))
         _comp_d.html(_html_diario, height=_altura_d, scrolling=True)
 
-    st.markdown("---")
-    csv_inf=pd.DataFrame([{k:v for k,v in l.items() if k!="historial"} for l in all_leads_raw]).to_csv(index=False).encode("utf-8")
-    st.download_button("⬇️ Exportar CSV",data=csv_inf,file_name="nauticrm_informe.csv",mime="text/csv")
+        if _eventos:
+            def _diario_pdf(eventos, tipo_color, d_desde, d_hasta):
+                import io as _io2
+                from reportlab.lib.pagesizes import A4
+                from reportlab.lib import colors as _rc
+                from reportlab.lib.units import cm
+                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+                from reportlab.lib.styles import ParagraphStyle
+                import html as _hm
+                _buf=_io2.BytesIO()
+                _doc=SimpleDocTemplate(_buf,pagesize=A4,leftMargin=1.8*cm,rightMargin=1.8*cm,topMargin=2*cm,bottomMargin=2*cm)
+                _GOLD=_rc.HexColor("#C9A84C"); _BLUE=_rc.HexColor("#0d3b6e"); _DARK=_rc.HexColor("#111")
+                _s_tit=ParagraphStyle("t",fontName="Helvetica-Bold",fontSize=15,textColor=_BLUE,spaceAfter=2)
+                _s_sub=ParagraphStyle("s",fontName="Helvetica",fontSize=9,textColor=_rc.HexColor("#666"),spaceAfter=12)
+                _s_cell=ParagraphStyle("c",fontName="Helvetica",fontSize=8,textColor=_DARK,leading=11)
+                _s_bold=ParagraphStyle("b",fontName="Helvetica-Bold",fontSize=8,textColor=_DARK,leading=11)
+                _s_dia=ParagraphStyle("d",fontName="Helvetica-Bold",fontSize=9,textColor=_BLUE)
+                _elems=[Paragraph("Diario de actividad — Náutica Viamar",_s_tit),
+                        Paragraph(f"{d_desde.strftime('%d/%m/%Y')} — {d_hasta.strftime('%d/%m/%Y')} · {len(eventos)} eventos",_s_sub)]
+                _data=[["Tipo","Lead / Empresa","Etapa","Nota"]]
+                _row_styles=[("BACKGROUND",(0,0),(-1,0),_BLUE),("TEXTCOLOR",(0,0),(-1,0),_rc.white),
+                             ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),8),
+                             ("ROWBACKGROUNDS",(0,1),(-1,-1),[_rc.white,_rc.HexColor("#f5f8ff")]),
+                             ("GRID",(0,0),(-1,-1),0.3,_rc.HexColor("#dddddd")),
+                             ("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),5),("RIGHTPADDING",(0,0),(-1,-1),5),
+                             ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]
+                _fecha_prev=None; _row_idx=1
+                for ev in eventos:
+                    if ev["fecha"]!=_fecha_prev:
+                        _fecha_prev=ev["fecha"]
+                        try: _dfmt=datetime.strptime(ev["fecha"],"%Y-%m-%d").strftime("%A %d de %B de %Y").capitalize()
+                        except: _dfmt=ev["fecha"]
+                        _data.append([Paragraph(_dfmt,_s_dia),"","",""])
+                        _row_styles+=[("SPAN",(0,_row_idx),(-1,_row_idx)),
+                                      ("BACKGROUND",(0,_row_idx),(-1,_row_idx),_rc.HexColor("#e8eeff")),
+                                      ("LINEBELOW",(0,_row_idx),(-1,_row_idx),1,_GOLD)]
+                        _row_idx+=1
+                    _col=_rc.HexColor(tipo_color.get(ev["tipo"],"#555555"))
+                    _empresa=f"\n{ev['empresa']}" if ev.get("empresa") else ""
+                    _data.append([Paragraph(ev["tipo"],ParagraphStyle("tp",fontName="Helvetica-Bold",fontSize=8,textColor=_rc.white,backColor=_col,leading=11,borderPadding=2)),
+                                  Paragraph(f"<b>{_hm.escape(ev['lead'])}</b><font color='#888888' size='7'>{_hm.escape(_empresa)}</font>",_s_cell),
+                                  Paragraph(_hm.escape(ev.get("etapa","")),_s_cell),
+                                  Paragraph(_hm.escape(ev.get("nota","")),_s_cell)])
+                    _row_idx+=1
+                _t=Table(_data,colWidths=[3.2*cm,5*cm,4*cm,None])
+                _t.setStyle(TableStyle(_row_styles))
+                _elems.append(_t)
+                _doc.build(_elems)
+                return _buf.getvalue()
+            try:
+                _pdf_d=_diario_pdf(_eventos,_TIPO_COLOR,_diario_desde,_diario_hasta)
+                st.download_button("⬇️ Exportar diario PDF",data=_pdf_d,
+                    file_name=f"diario_{_diario_desde}_{_diario_hasta}.pdf",mime="application/pdf",use_container_width=True)
+            except Exception as _epdf:
+                st.warning(f"PDF no disponible: {_epdf}")
 
 # ══ LEAD FORM ═════════════════════════════════════════════════════════════════
 elif "Lead" in page:
