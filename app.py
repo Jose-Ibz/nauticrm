@@ -646,8 +646,19 @@ elif "Informes" in page:
                 try: _mes=l.get("fechaCreacion","")[:7]
                 except: _mes="—"
                 if _mes: _altas_por_mes[_mes]=_altas_por_mes.get(_mes,0)+1
-            _sin_actividad=[l["nombre"] for l in _leads_ia if not l.get("historial") and l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido"]]
-            _estancados=[l["nombre"] for l in _leads_ia if days_since(l.get("ultimaActualizacion") or l.get("fechaCreacion",""))>30 and l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"]]
+            def _prox_futura(l):
+                try: return datetime.strptime(str(l.get("fechaProximaAccion","")),"%Y-%m-%d").date()>=date.today()
+                except: return False
+            # Sin actividad: sin historial Y sin próxima acción planificada Y alta hace más de 14 días
+            _sin_actividad=[l["nombre"] for l in _leads_ia
+                if not l.get("historial") and not l.get("proximaAccion") and not _prox_futura(l)
+                and days_since(l.get("fechaCreacion",""))>14
+                and l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido"]]
+            # Estancados: sin movimiento +30 días Y sin próxima acción futura planificada
+            _estancados=[l["nombre"] for l in _leads_ia
+                if days_since(l.get("ultimaActualizacion") or l.get("fechaCreacion",""))>30
+                and not _prox_futura(l)
+                and l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"]]
             _pipeline_activo=sum(l.get("valorOperacion",0) for l in _leads_ia if l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"])
             _valor_ganado=sum(l.get("valorOperacion",0) for l in _leads_ia if l["etapa"]=="Cerrado Ganado")
             _valor_perdido=sum(l.get("valorOperacion",0) for l in _leads_ia if l["etapa"]=="Cerrado Perdido")
@@ -684,9 +695,12 @@ Por mes: {', '.join(f"{k}: {v}" for k,v in sorted(_act_por_mes.items()))}
 ### Altas de nuevos leads por mes
 {', '.join(f"{k}: {v}" for k,v in sorted(_altas_por_mes.items()))}
 
+### Leads activos — detalle (etapa, alta, interacciones registradas, próxima acción)
+{chr(10).join(f"- {l['nombre']} | {l['etapa']} | alta:{l.get('fechaCreacion','?')} | interacciones:{len(l.get('historial',[]))} | próx.acción:{l.get('proximaAccion','—')} ({l.get('fechaProximaAccion','sin fecha')})" for l in _leads_ia if l['etapa'] not in ['Cerrado Ganado','Cerrado Perdido','En Pausa / Recuperable'])[:30]}
+
 ### Alertas
-- Leads sin ninguna actividad registrada ({len(_sin_actividad)}): {', '.join(_sin_actividad[:10])}{'...' if len(_sin_actividad)>10 else ''}
-- Leads estancados +30 días sin actividad ({len(_estancados)}): {', '.join(_estancados[:10])}{'...' if len(_estancados)>10 else ''}
+- Leads sin actividad ni plan (alta >14 días, sin historial y sin próxima acción) ({len(_sin_actividad)}): {', '.join(_sin_actividad[:10])}{'...' if len(_sin_actividad)>10 else ''}
+- Leads estancados +30 días sin movimiento ni acción futura planificada ({len(_estancados)}): {', '.join(_estancados[:10])}{'...' if len(_estancados)>10 else ''}
 
 ### Muestra de actividad reciente (últimas 20 interacciones)
 {chr(10).join(f"- [{a['fecha']}] {a['lead']} | {a['tipo']}: {a['nota']}" for a in _actividad[:20])}
@@ -698,6 +712,8 @@ Genera un informe completo en español con estas secciones:
 3. **Patrones detectados** (estacionalidad, tipos de cliente que cierran más, fuentes más rentables, idiomas relevantes)
 4. **Alertas y riesgos** (leads en riesgo, estancamientos, oportunidades perdidas)
 5. **Recomendaciones concretas** (mínimo 5 acciones específicas y prioritarias)
+
+IMPORTANTE: Un lead recién captado (especialmente de feria o salón náutico) con próxima acción planificada NO es un lead abandonado, aunque no tenga interacciones registradas en el historial — el contacto en persona es el primer paso. No lo marques como problema si tiene una fecha de próxima acción futura o fue dado de alta hace menos de 14 días.
 
 Sé directo, usa datos concretos del informe y enfócate en lo accionable. Formato markdown."""
 
