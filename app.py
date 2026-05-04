@@ -308,14 +308,14 @@ with st.sidebar:
     my_portfolio = st.checkbox("📂 Ver solo mi cartera")
     st.markdown("---")
     # Navegación con soporte de redirección desde kanban/lista
-    if "goto_lead" in st.session_state and st.session_state["goto_lead"]:
-        page_default = 3  # índice de ➕ Nuevo / Editar Lead
-    else:
-        page_default = 0
+    if "nav_page" not in st.session_state:
+        st.session_state["nav_page"] = "⊞ Funnel Kanban"
+    if st.session_state.get("goto_lead"):
+        st.session_state["nav_page"] = "➕ Nuevo / Editar Lead"
     page = st.radio("Navegación",[
         "⊞ Funnel Kanban","≡ Lista de Leads","📊 Informes",
         "➕ Nuevo / Editar Lead","📅 Próximas Acciones","🧊 Archivo Frío","⚙️ Configuración"
-    ], index=page_default)
+    ], key="nav_page")
     if page != "➕ Nuevo / Editar Lead":
         st.session_state["goto_lead"] = None
     st.markdown("---")
@@ -560,10 +560,28 @@ elif "Informes" in page:
 # ══ LEAD FORM ═════════════════════════════════════════════════════════════════
 elif "Lead" in page:
     st.markdown("## ➕ Nuevo / Editar Lead")
-    # Excluir leads en archivo frío del desplegable
-    leads_editables=[l for l in all_leads_raw]
+
+    # ── Confirmación de borrado (prioridad máxima, bloquea el resto) ──────────
+    if st.session_state.get("pending_delete_id"):
+        _del_id     = st.session_state["pending_delete_id"]
+        _del_nombre = st.session_state["pending_delete_nombre"]
+        st.warning(f"⚠️ ¿Seguro que quieres eliminar a **{_del_nombre}**? Esta acción no se puede deshacer.")
+        _c1, _c2 = st.columns(2)
+        if _c1.button("🗑️ Sí, eliminar definitivamente", use_container_width=True):
+            delete_lead(_del_id)
+            st.session_state["pending_delete_id"]     = None
+            st.session_state["pending_delete_nombre"] = None
+            st.session_state["nav_page"] = "⊞ Funnel Kanban"
+            st.rerun()
+        if _c2.button("↩ Cancelar", use_container_width=True):
+            st.session_state["pending_delete_id"]     = None
+            st.session_state["pending_delete_nombre"] = None
+            st.rerun()
+        st.stop()
+
+    # ── Selector de lead ──────────────────────────────────────────────────────
+    leads_editables=sorted(all_leads_raw,key=lambda l:l.get("fechaCreacion",""),reverse=True)
     nombres_lista=["— Crear nuevo lead —"]+[l["nombre"] for l in leads_editables]
-    # Preseleccionar si viene desde kanban/lista
     goto=st.session_state.get("goto_lead")
     default_idx=nombres_lista.index(goto) if goto and goto in nombres_lista else 0
     sel=st.selectbox("Seleccionar lead existente",nombres_lista,index=default_idx)
@@ -579,6 +597,10 @@ elif "Lead" in page:
             existing["etapa"]=etapa_r; existing["ultimaActualizacion"]=str(date.today())
             save_lead(existing,is_new=False); st.success(f"✅ → {etapa_r}"); st.rerun()
         st.markdown("---")
+    if st.session_state.get("_ultimo_guardado"):
+        st.success(f"✅ Lead **{st.session_state['_ultimo_guardado']}** guardado correctamente.")
+        st.session_state["_ultimo_guardado"] = None
+
     with st.form("lead_form"):
         st.markdown("### 👤 Datos de Contacto")
         c1,c2,c3=st.columns(3)
@@ -605,27 +627,58 @@ elif "Lead" in page:
         prox_a=c14.text_input("Próxima acción",value=d.get("proximaAccion",""))
         try:    prox_d=c15.date_input("Fecha próx. acción",value=datetime.strptime(str(d.get("fechaProximaAccion","")),"%Y-%m-%d").date())
         except: prox_d=c15.date_input("Fecha próx. acción",value=date.today())
-        st.markdown("### 📝 Historial")
-        hist_entries=d.get("historial",[]).copy()
-        if hist_entries:
-            for h in reversed(hist_entries):
-                st.markdown(f"<div style='background:#091220;border-radius:6px;padding:8px 12px;margin-bottom:5px;border-left:3px solid #c9a84c'><span style='color:#c9a84c;font-size:0.78rem;font-weight:700'>{h['fecha']}</span><span style='background:#1a3050;color:#7a8fa6;border-radius:4px;padding:1px 6px;font-size:0.65rem;margin-left:8px'>{h['tipo']}</span><div style='color:#e8e0d0;font-size:0.82rem;margin-top:4px'>{h['nota']}</div></div>", unsafe_allow_html=True)
-        else: st.caption("Sin interacciones aún.")
-        nc1,nc2=st.columns([1,4])
-        new_tipo=nc1.selectbox("Tipo",["Email","Llamada","Reunión","Nota"])
-        new_nota=nc2.text_input("Nota",placeholder="Describe la interacción...")
         submitted=st.form_submit_button("💾 Guardar Lead",use_container_width=True)
         if submitted:
             if not nombre.strip(): st.error("El nombre es obligatorio.")
+            elif st.session_state.get("_guardando"):
+                st.warning("⏳ Guardando, por favor espera...")
             else:
-                if new_nota.strip(): hist_entries.append({"fecha":str(date.today()),"tipo":new_tipo,"nota":new_nota.strip()})
-                new_lead={"id":d.get("id","") or str(uuid.uuid4()),"nombre":nombre,"empresa":empresa,"telefono":tel,"email":email,"idioma":idioma,"tipoEmbarcacion":tipo,"modeloEslora":modelo,"presupuesto":int(presu),"usoPrevisto":uso,"asignadoA":asig,"etapa":etapa,"probabilidad":int(prob),"valorOperacion":int(valor),"fuenteLead":fuente,"proximaAccion":prox_a,"fechaProximaAccion":str(prox_d),"historial":hist_entries,"fechaCreacion":d.get("fechaCreacion","") or str(date.today()),"ultimaActualizacion":str(date.today())}
+                st.session_state["_guardando"] = True
+                new_lead={"id":d.get("id","") or str(uuid.uuid4()),"nombre":nombre,"empresa":empresa,"telefono":tel,"email":email,"idioma":idioma,"tipoEmbarcacion":tipo,"modeloEslora":modelo,"presupuesto":int(presu),"usoPrevisto":uso,"asignadoA":asig,"etapa":etapa,"probabilidad":int(prob),"valorOperacion":int(valor),"fuenteLead":fuente,"proximaAccion":prox_a,"fechaProximaAccion":str(prox_d),"historial":d.get("historial",[]),"fechaCreacion":d.get("fechaCreacion","") or str(date.today()),"ultimaActualizacion":str(date.today())}
                 save_lead(new_lead,is_new=not bool(existing))
-                st.success("✅ Lead guardado."); st.rerun()
+                st.session_state["_guardando"] = False
+                st.session_state["_ultimo_guardado"] = nombre
+                st.rerun()
+
     if existing:
+        # ── Registrar actividad ───────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("##### 📝 Registrar actividad")
+        _a1, _a2 = st.columns([1, 3])
+        _act_tipo = _a1.selectbox("Tipo de contacto", ["Email","Llamada","Reunión","WhatsApp","Nota"], key="act_tipo")
+        _act_nota = _a2.text_area("Descripción", placeholder="Qué se dijo, qué se envió, qué contestó el lead...", height=90, key="act_nota", label_visibility="collapsed")
+        if st.button("➕ Registrar actividad", use_container_width=True):
+            if not _act_nota.strip():
+                st.warning("Escribe la descripción antes de registrar.")
+            else:
+                _hist = existing.get("historial", []).copy()
+                _hist.append({"fecha": str(date.today()), "tipo": _act_tipo, "nota": _act_nota.strip()})
+                save_lead({**existing, "historial": _hist, "ultimaActualizacion": str(date.today())}, is_new=False)
+                st.rerun()
+
+        # ── Historial de comunicaciones ───────────────────────────────────────
+        st.markdown("---")
+        st.markdown("##### 🕐 Historial de comunicaciones")
+        _hist_list = existing.get("historial", [])
+        if not _hist_list:
+            st.caption("Sin actividad registrada aún.")
+        else:
+            TIPO_COLOR = {"Email":"#2563eb","Llamada":"#16a34a","Reunión":"#7c3aed","WhatsApp":"#25d366","Nota":"#c9a84c"}
+            for h in reversed(_hist_list):
+                _col = TIPO_COLOR.get(h["tipo"], "#7a8fa6")
+                st.markdown(f"""<div style='background:#091220;border:1px solid #1a3050;border-left:3px solid {_col};border-radius:6px;padding:10px 14px;margin-bottom:6px'>
+                    <div style='display:flex;align-items:center;gap:8px;margin-bottom:5px'>
+                        <span style='color:#c9a84c;font-size:0.78rem;font-weight:700'>{h['fecha']}</span>
+                        <span style='background:{_col};color:white;border-radius:4px;padding:1px 8px;font-size:0.68rem;font-weight:700'>{h['tipo']}</span>
+                    </div>
+                    <div style='color:#e8e0d0;font-size:0.84rem;white-space:pre-wrap'>{h['nota']}</div>
+                </div>""", unsafe_allow_html=True)
+
         st.markdown("---")
         if st.button("🗑️ Eliminar este lead"):
-            delete_lead(existing["id"]); st.success("Lead eliminado."); st.rerun()
+            st.session_state["pending_delete_id"]     = existing["id"]
+            st.session_state["pending_delete_nombre"] = existing["nombre"]
+            st.rerun()
 
 # ══ PRÓXIMAS ACCIONES ══════════════════════════════════════════════════════════
 elif "Acciones" in page:
