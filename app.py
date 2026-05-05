@@ -1167,6 +1167,8 @@ Reglas para las alertas:
 - Solo alertar por estancamiento real: más de 30 días en cualquier etapa activa SIN ningún movimiento ni plan de seguimiento.
 - "En Pausa / Recuperable" NO es un problema: es gestión proactiva de oportunidades diferidas.
 
+IMPORTANTE: No analices ni desgloses por vendedor asignado salvo que se pregunte expresamente. El equipo trabaja de forma conjunta y los leads no tienen una asignación significativa por vendedor.
+
 Sé directo, usa datos concretos del informe y enfócate en lo accionable. Formato markdown."""
 
             with st.spinner("🤖 Claude está analizando los datos..."):
@@ -1959,83 +1961,11 @@ elif "Asistente" in page:
         st.session_state["_chat_ctx_key"] = _ctx_key
     _SYS_CHAT = _SYS_BASE + st.session_state["_chat_ctx"]
 
-    # ── Exportación JSON completa ──────────────────────────────────────────────
-    def _build_export_json():
-        def _map_lead(l, tipo):
-            hist=l.get("historial",[])
-            return {
-                "tipo": tipo,
-                "id": l.get("id",""),
-                "nombre": l.get("nombre",""),
-                "empresa": l.get("empresa",""),
-                "email": l.get("email",""),
-                "telefono": l.get("telefono",""),
-                "idioma": l.get("idioma",""),
-                "tipoEmbarcacion": l.get("tipoEmbarcacion",""),
-                "modeloEslora": l.get("modeloEslora",""),
-                "notasInternas": l.get("usoPrevisto",""),
-                "etapa": l.get("etapa",""),
-                "fuente": l.get("fuenteLead",""),
-                "vendedorAsignado": l.get("asignadoA",""),
-                "valorEstimado": l.get("valorOperacion",0) or l.get("presupuesto",0),
-                "probabilidadCierre": l.get("probabilidad",0),
-                "fechaAlta": l.get("fechaCreacion",""),
-                "fechaUltimoContacto": l.get("ultimaActualizacion",""),
-                "proximaAccion": l.get("proximaAccion",""),
-                "fechaProximaAccion": l.get("fechaProximaAccion",""),
-                "historialCompleto": [
-                    {"fecha": h.get("fecha",""), "tipo": h.get("tipo",""), "nota": h.get("nota","")}
-                    for h in hist
-                ],
-                "fechaArchivo": l.get("fechaArchivo",""),
-                "motivoArchivo": l.get("motivoArchivo",""),
-                "fechaPasivo": l.get("fechaPasivo",""),
-            }
-        _pipeline=[l for l in all_leads_raw if l.get("etapa") not in ["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"]]
-        _ganados=[l for l in all_leads_raw if l.get("etapa")=="Cerrado Ganado"]
-        _perdidos=[l for l in all_leads_raw if l.get("etapa")=="Cerrado Perdido"]
-        _pausa=[l for l in all_leads_raw if l.get("etapa")=="En Pausa / Recuperable"]
-        todos=(
-            [_map_lead(l,"pipeline_activo") for l in _pipeline]+
-            [_map_lead(l,"cerrado_ganado") for l in _ganados]+
-            [_map_lead(l,"cerrado_perdido") for l in _perdidos]+
-            [_map_lead(l,"en_pausa") for l in _pausa]+
-            [_map_lead(l,"archivo_frio") for l in archivo_frio]+
-            [_map_lead(l,"cliente_pasivo") for l in clientes_pasivos]
-        )
-        export={
-            "exportacion":{
-                "fuente":"NautiCRM - Náutica Viamar",
-                "fecha": str(date.today()),
-                "total_registros": len(todos),
-                "desglose":{
-                    "pipeline_activo":len(_pipeline),
-                    "cerrado_ganado":len(_ganados),
-                    "cerrado_perdido":len(_perdidos),
-                    "en_pausa":len(_pausa),
-                    "archivo_frio":len(archivo_frio),
-                    "clientes_pasivos":len(clientes_pasivos),
-                },
-            },
-            "registros": todos
-        }
-        return _json_chat.dumps(export, ensure_ascii=False, indent=2)
-
     # ── UI ─────────────────────────────────────────────────────────────────────
     _total_reg = len(all_leads_raw) + len(archivo_frio) + len(clientes_pasivos)
-    _c1, _c2, _c3 = st.columns([4,2,2])
+    _c1, _c2 = st.columns([6,2])
     _c1.markdown(f"<div style='padding:8px 0;font-size:0.85rem;color:#7a8fa6'>📊 <b style='color:#e8e0d0'>{_total_reg}</b> registros totales en el CRM</div>", unsafe_allow_html=True)
     with _c2:
-        _export_json = _build_export_json()
-        st.download_button(
-            "⬇️ Exportar JSON completo",
-            data=_export_json.encode("utf-8"),
-            file_name=f"nauticrm_export_{date.today()}.json",
-            mime="application/json",
-            use_container_width=True,
-            help="Descarga todos los datos del CRM para usar con Claude u otros asistentes IA"
-        )
-    with _c3:
         if st.button("🗑️ Nueva conversación", use_container_width=True):
             st.session_state["chat_ia"] = []; st.rerun()
 
