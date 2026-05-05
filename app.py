@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, date, timedelta
 import uuid
+import html as _html
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -647,7 +648,7 @@ if MODO_FERIA:
     if recientes:
         st.caption(f"Últimos {len(recientes)} leads de feria:")
         for l in reversed(recientes):
-            st.markdown(f"<div style='background:#0d1e35;border:1px solid #1a3050;border-radius:8px;padding:10px 14px;margin-bottom:6px'><span style='color:#c9a84c;font-weight:700'>{l['nombre']}</span><span style='color:#7a8fa6;font-size:0.78rem'> · {l.get('empresa','')} · {l.get('tipoEmbarcacion','')}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background:#0d1e35;border:1px solid #1a3050;border-radius:8px;padding:10px 14px;margin-bottom:6px'><span style='color:#c9a84c;font-weight:700'>{_html.escape(l['nombre'])}</span><span style='color:#7a8fa6;font-size:0.78rem'> · {_html.escape(l.get('empresa',''))} · {_html.escape(l.get('tipoEmbarcacion',''))}</span></div>", unsafe_allow_html=True)
     st.stop()
 
 # ══ SIDEBAR ═══════════════════════════════════════════════════════════════════
@@ -803,8 +804,8 @@ if "Kanban" in page:
             {"<div style='text-align:center;padding:4px 2px 6px;font-family:monospace;font-size:1rem;font-weight:700;color:#c9a84c'>"+fmt_eur(total)+"</div>" if total>0 else ""}""", unsafe_allow_html=True)
             for l in cards[:5]:
                 st.markdown(f"""<div style="background:#0d1e35;border:1px solid #1a3050;border-left:3px solid {color};border-radius:5px;padding:5px 8px;margin:3px 0;font-size:0.7rem">
-                    <div style="font-weight:600;color:#e8e0d0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{l['nombre']}</div>
-                    <div style="color:#7a8fa6;font-size:0.62rem">{l['empresa']}·{fmt_eur(l.get('valorOperacion',0))}</div></div>""", unsafe_allow_html=True)
+                    <div style="font-weight:600;color:#e8e0d0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_html.escape(l['nombre'])}</div>
+                    <div style="color:#7a8fa6;font-size:0.62rem">{_html.escape(l['empresa'])}·{fmt_eur(l.get('valorOperacion',0))}</div></div>""", unsafe_allow_html=True)
             if len(cards)>5: st.markdown(f"<small style='color:#7a8fa6;padding:0 5px'>+{len(cards)-5} más</small>", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -829,11 +830,11 @@ elif "Lista" in page:
             with c1:
                 color=STAGE_COLORS.get(l["etapa"],"#1a3050")
                 st.markdown(f"""<div style="background:#0d1e35;border:1px solid #1a3050;border-left:3px solid {color};border-radius:6px;padding:8px 12px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">
-                    <div><span style="color:#e8e0d0;font-weight:700;font-size:0.85rem">{urg_emoji(l.get('fechaProximaAccion'))} {l['nombre']}</span>
-                    <span style="background:{color};color:white;border-radius:10px;padding:1px 7px;font-size:0.62rem;font-weight:700;margin-left:8px">{l['etapa']}</span>
-                    <span style="color:#7a8fa6;font-size:0.72rem;margin-left:8px">{l.get('empresa','')}</span></div>
+                    <div><span style="color:#e8e0d0;font-weight:700;font-size:0.85rem">{urg_emoji(l.get('fechaProximaAccion'))} {_html.escape(l['nombre'])}</span>
+                    <span style="background:{color};color:white;border-radius:10px;padding:1px 7px;font-size:0.62rem;font-weight:700;margin-left:8px">{_html.escape(l['etapa'])}</span>
+                    <span style="color:#7a8fa6;font-size:0.72rem;margin-left:8px">{_html.escape(l.get('empresa',''))}</span></div>
                     <div style="text-align:right"><span style="color:#2ecc71;font-family:monospace;font-size:0.78rem;font-weight:700">{fmt_eur(l.get('valorOperacion',0))}</span>
-                    <span style="color:#7a8fa6;font-size:0.7rem;margin-left:8px">{l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')}</span></div>
+                    <span style="color:#7a8fa6;font-size:0.7rem;margin-left:8px">{_html.escape(l.get('tipoEmbarcacion',''))} {_html.escape(l.get('modeloEslora',''))}</span></div>
                 </div>""", unsafe_allow_html=True)
             with c2:
                 if st.button("✏️", key=f"lst_{l['id']}", help="Ir a ficha"):
@@ -1505,10 +1506,10 @@ elif "Lead" in page:
                 _col = TIPO_COLOR.get(h["tipo"], "#7a8fa6")
                 st.markdown(f"""<div style='background:#091220;border:1px solid #1a3050;border-left:3px solid {_col};border-radius:6px;padding:10px 14px;margin-bottom:6px'>
                     <div style='display:flex;align-items:center;gap:8px;margin-bottom:5px'>
-                        <span style='color:#c9a84c;font-size:0.78rem;font-weight:700'>{h['fecha']}</span>
-                        <span style='background:{_col};color:white;border-radius:4px;padding:1px 8px;font-size:0.68rem;font-weight:700'>{h['tipo']}</span>
+                        <span style='color:#c9a84c;font-size:0.78rem;font-weight:700'>{_html.escape(h['fecha'])}</span>
+                        <span style='background:{_col};color:white;border-radius:4px;padding:1px 8px;font-size:0.68rem;font-weight:700'>{_html.escape(h['tipo'])}</span>
                     </div>
-                    <div style='color:#e8e0d0;font-size:0.84rem;white-space:pre-wrap'>{h['nota']}</div>
+                    <div style='color:#e8e0d0;font-size:0.84rem;white-space:pre-wrap'>{_html.escape(h['nota'])}</div>
                 </div>""", unsafe_allow_html=True)
 
         # ── Ficha imprimible ──────────────────────────────────────────────────
@@ -1631,13 +1632,13 @@ elif "Acciones" in page:
         with _pc1:
             st.markdown(f"""<div style="background:#0d1e35;border:1px solid #1a3050;border-left:4px solid {color};border-radius:8px;padding:12px 16px;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center">
                 <div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-                    <span style="color:#e8e0d0;font-weight:700;font-size:0.88rem">{l['nombre']}</span>
-                    <span style="background:{color};color:white;border-radius:10px;padding:1px 8px;font-size:0.62rem;font-weight:700">{l['etapa']}</span>
-                    <span style="color:#7a8fa6;font-size:0.72rem">{l['asignadoA'].replace('Vendedor','V.')}</span></div>
-                <div style="color:#c9a84c;font-size:0.82rem;margin-bottom:3px">↳ {l.get('proximaAccion','Sin descripción')}</div>
-                <div style="color:#7a8fa6;font-size:0.72rem">{l.get('empresa','')} · {l.get('tipoEmbarcacion','')} {l.get('modeloEslora','')}</div></div>
+                    <span style="color:#e8e0d0;font-weight:700;font-size:0.88rem">{_html.escape(l['nombre'])}</span>
+                    <span style="background:{color};color:white;border-radius:10px;padding:1px 8px;font-size:0.62rem;font-weight:700">{_html.escape(l['etapa'])}</span>
+                    <span style="color:#7a8fa6;font-size:0.72rem">{_html.escape(l['asignadoA'].replace('Vendedor','V.'))}</span></div>
+                <div style="color:#c9a84c;font-size:0.82rem;margin-bottom:3px">↳ {_html.escape(l.get('proximaAccion','Sin descripción'))}</div>
+                <div style="color:#7a8fa6;font-size:0.72rem">{_html.escape(l.get('empresa',''))} · {_html.escape(l.get('tipoEmbarcacion',''))} {_html.escape(l.get('modeloEslora',''))}</div></div>
                 <div style="text-align:right;flex-shrink:0;margin-left:16px">
-                    <div style="color:#e8e0d0;font-size:0.82rem;font-weight:700">{l.get('fechaProximaAccion','—')}</div>
+                    <div style="color:#e8e0d0;font-size:0.82rem;font-weight:700">{_html.escape(l.get('fechaProximaAccion','—'))}</div>
                     <div style="font-size:0.72rem;color:{dtcol}">{dias_txt}</div>
                     <div style="color:#2ecc71;font-family:monospace;font-size:0.72rem;margin-top:2px">{fmt_eur(l.get('valorOperacion',0))}</div>
                 </div></div>""", unsafe_allow_html=True)
@@ -1650,7 +1651,7 @@ elif "Acciones" in page:
         st.markdown("---"); st.markdown("### ⚪ Sin próxima acción")
         for l in sin_accion:
             color=STAGE_COLORS.get(l["etapa"],"#1a3050")
-            st.markdown(f"<div style='background:#0d1e35;border:1px solid #1a3050;border-left:4px solid {color};border-radius:8px;padding:10px 16px;margin-bottom:6px'><span style='color:#e8e0d0;font-weight:600'>{l['nombre']}</span><span style='background:{color};color:white;border-radius:10px;padding:1px 8px;font-size:0.62rem;font-weight:700;margin:0 8px'>{l['etapa']}</span><span style='color:#7a8fa6;font-size:0.75rem'>{l.get('empresa','')}·{l['asignadoA'].replace('Vendedor','V.')}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background:#0d1e35;border:1px solid #1a3050;border-left:4px solid {color};border-radius:8px;padding:10px 16px;margin-bottom:6px'><span style='color:#e8e0d0;font-weight:600'>{_html.escape(l['nombre'])}</span><span style='background:{color};color:white;border-radius:10px;padding:1px 8px;font-size:0.62rem;font-weight:700;margin:0 8px'>{_html.escape(l['etapa'])}</span><span style='color:#7a8fa6;font-size:0.75rem'>{_html.escape(l.get('empresa',''))}·{_html.escape(l['asignadoA'].replace('Vendedor','V.'))}</span></div>", unsafe_allow_html=True)
 
     # ── PDF Próximas Acciones ──────────────────────────────────────────────
     st.markdown("---")
