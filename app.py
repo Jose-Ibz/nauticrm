@@ -1008,7 +1008,7 @@ elif "Informes" in page:
             _actividad=[]
             for l in _leads_ia:
                 for h in l.get("historial",[]):
-                    _actividad.append({"lead":l["nombre"],"fecha":h["fecha"],"tipo":h["tipo"],"nota":h["nota"][:120]})
+                    _actividad.append({"lead":l["nombre"],"fecha":h["fecha"],"tipo":h["tipo"],"nota":h["nota"][:300]})
             _actividad.sort(key=lambda x:x["fecha"],reverse=True)
             _act_por_tipo={}
             for a in _actividad:
@@ -1041,6 +1041,33 @@ elif "Informes" in page:
             _pipeline_activo=sum(l.get("valorOperacion",0) for l in _leads_ia if l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"])
             _valor_ganado=sum(l.get("valorOperacion",0) for l in _leads_ia if l["etapa"]=="Cerrado Ganado")
             _valor_perdido=sum(l.get("valorOperacion",0) for l in _leads_ia if l["etapa"]=="Cerrado Perdido")
+            # Progresión de etapas — conteo de transiciones desde el historial
+            _progresion={}
+            for l in _leads_ia+_arch_ia:
+                for h in l.get("historial",[]):
+                    if h.get("tipo")=="Cambio etapa" and " → " in h.get("nota",""):
+                        k=h["nota"].strip(); _progresion[k]=_progresion.get(k,0)+1
+            # Historial completo de leads cerrados (ganado + perdido)
+            _cerrados_hist=[]
+            for l in _leads_ia:
+                if l["etapa"] in ["Cerrado Ganado","Cerrado Perdido"]:
+                    _h_lines=" | ".join(f"[{h['fecha']}] {h['tipo']}: {h['nota'][:150]}" for h in l.get("historial",[]))
+                    _cerrados_hist.append(
+                        f"- {l['nombre']} ({l['etapa']}) | €{l.get('valorOperacion',0)} | "
+                        f"alta:{l.get('fechaCreacion','')} | cierre:{l.get('ultimaActualizacion','')} | "
+                        + (_h_lines or "sin historial")
+                    )
+            # Leads en pausa — motivo registrado
+            _pausa_hist=[]
+            for l in _leads_ia:
+                if l["etapa"]=="En Pausa / Recuperable":
+                    _motivo_p=next((h["nota"][:200] for h in reversed(l.get("historial",[])) if h.get("tipo")=="Pausa"),"sin motivo registrado")
+                    _pausa_hist.append(f"- {l['nombre']} | desde:{l.get('ultimaActualizacion','')} | motivo: {_motivo_p}")
+            # Archivo frío — motivos de archivo
+            _arch_motivos=[
+                f"- {l.get('nombre','')} | archivado:{l.get('fechaArchivo','')} | motivo: {l.get('motivoArchivo','—')[:200]}"
+                for l in _arch_ia[:25]
+            ]
 
             _prompt=f"""Eres un consultor experto en ventas náuticas analizando los datos del CRM de Náutica Viamar, una empresa especializada en embarcaciones de recreo.
 
@@ -1074,6 +1101,9 @@ Por mes: {', '.join(f"{k}: {v}" for k,v in sorted(_act_por_mes.items()))}
 ### Altas de nuevos leads por mes
 {', '.join(f"{k}: {v}" for k,v in sorted(_altas_por_mes.items()))}
 
+### Progresión de etapas (transiciones registradas en historial)
+{chr(10).join(f"- {k}: {v} veces" for k,v in sorted(_progresion.items(),key=lambda x:-x[1])) or "- Sin datos de cambios de etapa registrados"}
+
 ### Tiempos de ciclo de venta (calculados desde historial)
 {(lambda _tiempos: chr(10).join(f"- {n}: {v}" for n,v in _tiempos.items()) if _tiempos else "- Sin datos suficientes aún")(dict(filter(lambda kv: kv[1] is not None, {
     "Días promedio desde Alta hasta primera interacción": (lambda vals: round(sum(vals)/len(vals)) if vals else None)(
@@ -1094,22 +1124,32 @@ Por mes: {', '.join(f"{k}: {v}" for k,v in sorted(_act_por_mes.items()))}
 {chr(10).join((lambda _dias_etapa, _pf: f"- {l['nombre']} | {l['etapa']} | alta:{l.get('fechaCreacion','?')} | días_en_etapa:{_dias_etapa} | próx.acción:{l.get('proximaAccion','—')} ({l.get('fechaProximaAccion','sin fecha')}) | {'⚠️ sin plan' if not _pf and _dias_etapa>21 else '✅ con plan' if _pf else '🕐 reciente'}")(
     days_since(next((h["fecha"] for h in reversed(l.get("historial",[])) if h.get("tipo")=="Cambio etapa" and l["etapa"] in h.get("nota","")), l.get("ultimaActualizacion") or l.get("fechaCreacion",""))),
     (lambda s: (lambda d: d>=date.today())(datetime.strptime(s,"%Y-%m-%d").date()) if s else False)(l.get("fechaProximaAccion","")))
-    for l in _leads_ia if l['etapa'] not in ['Cerrado Ganado','Cerrado Perdido','En Pausa / Recuperable'])[:35]}
+    for l in _leads_ia if l['etapa'] not in ['Cerrado Ganado','Cerrado Perdido','En Pausa / Recuperable'])[:60]}
+
+### Leads cerrados — historial completo ({len(_cerrados_hist)} leads)
+{chr(10).join(_cerrados_hist) or "- Sin leads cerrados en el período"}
+
+### Leads en pausa / recuperable — motivos ({len(_pausa_hist)} leads)
+{chr(10).join(_pausa_hist) or "- Sin leads en pausa"}
+
+### Archivo frío — motivos de archivo ({len(_arch_ia)} leads, mostrando {min(len(_arch_ia),25)})
+{chr(10).join(_arch_motivos) or "- Archivo vacío"}
 
 ### Alertas
 - Leads sin actividad ni plan (alta >14 días, sin historial y sin próxima acción) ({len(_sin_actividad)}): {', '.join(_sin_actividad[:10])}{'...' if len(_sin_actividad)>10 else ''}
 - Leads estancados +30 días sin movimiento ni acción futura planificada ({len(_estancados)}): {', '.join(_estancados[:10])}{'...' if len(_estancados)>10 else ''}
 
-### Muestra de actividad reciente (últimas 20 interacciones)
-{chr(10).join(f"- [{a['fecha']}] {a['lead']} | {a['tipo']}: {a['nota']}" for a in _actividad[:20])}
+### Actividad reciente (últimas 30 interacciones con notas completas)
+{chr(10).join(f"- [{a['fecha']}] {a['lead']} | {a['tipo']}: {a['nota']}" for a in _actividad[:30])}
 
 ## INSTRUCCIONES
 Genera un informe completo en español con estas secciones:
 1. **Resumen ejecutivo** (3-4 frases clave)
 2. **Análisis de pipeline** (estado del embudo, conversión, valor en juego)
-3. **Patrones detectados** (estacionalidad, tipos de cliente que cierran más, fuentes más rentables, idiomas relevantes)
-4. **Alertas y riesgos** (leads en riesgo, estancamientos, oportunidades perdidas)
-5. **Recomendaciones concretas** (mínimo 5 acciones específicas y prioritarias)
+3. **Patrones detectados** (estacionalidad, tipos de cliente que cierran más, fuentes más rentables, idiomas relevantes, patrones en los motivos de cierre/pérdida/pausa)
+4. **Velocidad de ventas** (usa la progresión de etapas y tiempos de ciclo: dónde se atascan los leads, cuánto tardan en avanzar, en qué transición se pierden más)
+5. **Alertas y riesgos** (leads en riesgo, estancamientos, oportunidades perdidas, leads en pausa que conviene recuperar)
+6. **Recomendaciones concretas** (mínimo 5 acciones específicas y prioritarias, apoyadas en datos reales del historial)
 
 CONTEXTO DEL PROCESO DE VENTA DE NÁUTICA VIAMAR (aplícalo siempre al interpretar los datos):
 El pipeline sigue este flujo específico:
