@@ -770,7 +770,7 @@ if "Kanban" in page:
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("⚡ Cambio rápido de estado"):
         c1,c2,c3=st.columns(3)
-        _leads_k_sorted=[l for l in sorted(all_leads_raw,key=lambda l:l.get("fechaCreacion",""),reverse=True) if l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido"]]
+        _leads_k_sorted=[l for l in sorted(all_leads_raw,key=lambda l:max(l.get("ultimaActualizacion","") or "",l.get("fechaCreacion","") or ""),reverse=True) if l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido"]]
         _leads_k_dict={_lead_display(l):l for l in _leads_k_sorted}
         sel_k=c1.selectbox("Lead",["— Selecciona —"]+list(_leads_k_dict.keys()),key="sel_k")
         nueva_etapa=c2.selectbox("Nueva etapa",STAGES,key="etapa_k")
@@ -1430,7 +1430,7 @@ elif "Lead" in page:
         st.stop()
 
     # ── Selector de lead ──────────────────────────────────────────────────────
-    leads_editables=sorted(all_leads_raw,key=lambda l:l.get("fechaCreacion",""),reverse=True)
+    leads_editables=sorted(all_leads_raw,key=lambda l:max(l.get("ultimaActualizacion","") or "",l.get("fechaCreacion","") or ""),reverse=True)
     _leads_edit_dict={_lead_display(l):l for l in leads_editables}
     display_lista=["— Crear nuevo lead —"]+list(_leads_edit_dict.keys())
     _goto=st.session_state.get("goto_lead")
