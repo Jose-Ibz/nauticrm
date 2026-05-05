@@ -123,11 +123,16 @@ def load_leads():
         # historial como lista
         h = lead["historial"]
         if isinstance(h, str) and h:
-            entries = []
-            for e in h.split(";;"):
-                parts = e.split("|",2)
-                if len(parts)==3: entries.append({"fecha":parts[0],"tipo":parts[1],"nota":parts[2]})
-            lead["historial"] = entries
+            import json as _jl
+            if h.startswith("["):  # JSON (nuevo formato)
+                try: lead["historial"] = _jl.loads(h)
+                except: lead["historial"] = []
+            else:  # legacy: "fecha|tipo|nota;;fecha|tipo|nota"
+                entries = []
+                for e in h.split(";;"):
+                    parts = e.split("|", 2)
+                    if len(parts) == 3: entries.append({"fecha": parts[0], "tipo": parts[1], "nota": parts[2]})
+                lead["historial"] = entries
         else:
             lead["historial"] = []
         rows.append(lead)
@@ -162,7 +167,8 @@ def load_config():
 
 def save_lead(lead, is_new=True):
     ws = get_sheet("Leads")
-    hist_str = ";;".join([f"{h['fecha']}|{h['tipo']}|{h['nota']}" for h in lead.get("historial",[])])
+    import json as _jsl
+    hist_str = _jsl.dumps(lead.get("historial", []), ensure_ascii=False)
     row = [lead.get(c,"") for c in LEAD_COLS[:-1]] + [hist_str if c=="historial" else lead.get(c,"") for c in ["ultimaActualizacion"]]
     row = []
     for c in LEAD_COLS:
@@ -209,7 +215,7 @@ def _serialize_lead_row(l, col_list):
     import json as _js
     hist = l.get("historial", [])
     if isinstance(hist, list):
-        hist_str = ";;".join([f"{h.get('fecha','')}|{h.get('tipo','')}|{h.get('nota','')}" for h in hist])
+        hist_str = _js.dumps(hist, ensure_ascii=False)
     else:
         hist_str = str(hist)
     row = []
@@ -231,10 +237,15 @@ def _deserialize_lead_rows(ws_rows, col_list):
         l = dict(zip(headers, padded))
         h_raw = l.get("historial", "")
         if h_raw:
-            try:
-                entries = [e.split("|", 2) for e in h_raw.split(";;") if e]
-                l["historial"] = [{"fecha": e[0], "tipo": e[1] if len(e) > 1 else "", "nota": e[2] if len(e) > 2 else ""} for e in entries]
-            except: l["historial"] = []
+            import json as _jdr
+            if h_raw.startswith("["):  # JSON (nuevo formato)
+                try: l["historial"] = _jdr.loads(h_raw)
+                except: l["historial"] = []
+            else:  # legacy: "fecha|tipo|nota;;..."
+                try:
+                    entries = [e.split("|", 2) for e in h_raw.split(";;") if e]
+                    l["historial"] = [{"fecha": e[0], "tipo": e[1] if len(e) > 1 else "", "nota": e[2] if len(e) > 2 else ""} for e in entries]
+                except: l["historial"] = []
         else:
             l["historial"] = []
         result.append(l)
@@ -354,6 +365,11 @@ def months_since(ds):
         return (date.today().year-d.year)*12+(date.today().month-d.month)
     except: return 0
 
+def _lead_display(l):
+    """Clave de visualización única para selectboxes: 'Nombre · Empresa'."""
+    empresa = (l.get("empresa") or "").strip()
+    return f"{l['nombre']} · {empresa}" if empresa else l["nombre"]
+
 # ─── BACKUP ───────────────────────────────────────────────────────────────────
 BACKUP_MAX = 30  # máximo de copias a conservar
 
@@ -454,8 +470,9 @@ def _backup_to_json(sheet_name):
         return _jbak.dumps({"backup": sheet_name, "fecha_exportacion": str(date.today()), "registros": leads}, ensure_ascii=False, indent=2)
     except: return None
 
+@st.cache_data(ttl=300)
 def _last_backup_date():
-    """Devuelve la fecha del último backup como date, o None."""
+    """Devuelve la fecha del último backup como date, o None. Cache 5 min."""
     try:
         baks = _list_backup_sheets()
         if not baks: return None
@@ -537,8 +554,9 @@ def _backup_to_github(all_leads, archivo, pasivos):
 def _github_backup_configured():
     return bool(st.secrets.get("github_token","") and st.secrets.get("backup_repo",""))
 
+@st.cache_data(ttl=300)
 def _last_github_backup_date():
-    """Comprueba la fecha del backup más reciente en GitHub."""
+    """Comprueba la fecha del backup más reciente en GitHub. Cache 5 min."""
     import requests as _req
     token = st.secrets.get("github_token","")
     repo  = st.secrets.get("backup_repo","")
@@ -659,7 +677,7 @@ with st.sidebar:
     if page != "➕ Nuevo / Editar Lead":
         st.session_state["goto_lead"] = None
     st.markdown("---")
-    if st.button("🔄 Actualizar datos"): load_leads.clear(); load_config.clear(); load_archivo_frio.clear(); load_clientes_pasivos.clear(); st.rerun()
+    if st.button("🔄 Actualizar datos"): load_leads.clear(); load_config.clear(); load_archivo_frio.clear(); load_clientes_pasivos.clear(); _last_backup_date.clear(); _last_github_backup_date.clear(); st.rerun()
     n_arch=len(archivo_frio)
     if n_arch>0: st.markdown(f"<div style='background:#1a3050;border-radius:6px;padding:6px 10px;font-size:0.75rem;color:#7a8fa6;margin-bottom:4px'>🧊 Archivo Frío: <b style='color:#e8e0d0'>{n_arch}</b></div>", unsafe_allow_html=True)
     n_pas=len(clientes_pasivos)
@@ -745,25 +763,27 @@ if "Kanban" in page:
                 }}
                 </style>""", unsafe_allow_html=True)
                 if st.button(btn_label, key=f"kb_{l['id']}"):
-                    st.session_state["goto_lead"] = l["nombre"]; st.rerun()
+                    st.session_state["goto_lead"] = l["id"]; st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("⚡ Cambio rápido de estado"):
         c1,c2,c3=st.columns(3)
-        nombres_k=[l["nombre"] for l in sorted(all_leads_raw,key=lambda l:l.get("fechaCreacion",""),reverse=True) if l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido"]]
-        sel_k=c1.selectbox("Lead",["— Selecciona —"]+nombres_k,key="sel_k")
+        _leads_k_sorted=[l for l in sorted(all_leads_raw,key=lambda l:l.get("fechaCreacion",""),reverse=True) if l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido"]]
+        _leads_k_dict={_lead_display(l):l for l in _leads_k_sorted}
+        sel_k=c1.selectbox("Lead",["— Selecciona —"]+list(_leads_k_dict.keys()),key="sel_k")
         nueva_etapa=c2.selectbox("Nueva etapa",STAGES,key="etapa_k")
         if c3.button("✅ Cambiar"):
             if sel_k!="— Selecciona —":
-                lead_upd=next(l for l in all_leads_raw if l["nombre"]==sel_k)
+                lead_upd=_leads_k_dict[sel_k]
                 _etapa_ant_k=lead_upd.get("etapa","")
                 lead_upd["etapa"]=nueva_etapa; lead_upd["ultimaActualizacion"]=str(date.today())
+                _nombre_k=lead_upd.get("nombre","")
                 if nueva_etapa in ["Cerrado Perdido","En Pausa / Recuperable"]:
-                    st.session_state["pending_causa"]={"lead":lead_upd,"nombre":sel_k,"etapa":nueva_etapa,"etapa_anterior":_etapa_ant_k}
+                    st.session_state["pending_causa"]={"lead":lead_upd,"nombre":_nombre_k,"etapa":nueva_etapa,"etapa_anterior":_etapa_ant_k}
                 else:
                     save_lead(con_cambio_etapa(lead_upd,_etapa_ant_k), is_new=False)
-                    st.success(f"✅ {sel_k} → {nueva_etapa}")
+                    st.success(f"✅ {_nombre_k} → {nueva_etapa}")
                 st.rerun()
 
     st.markdown("<div style='margin:8px 0 16px;padding:8px 14px;background:#0d1e35;border:1px solid #1a3050;border-radius:8px;font-size:0.78rem;color:#7a8fa6'>🔴 Vencida &nbsp;|&nbsp; 🟡 Hoy &nbsp;|&nbsp; 🟢 Futura &nbsp;|&nbsp; ⚪ Sin fecha asignada</div>", unsafe_allow_html=True)
@@ -817,7 +837,7 @@ elif "Lista" in page:
                 </div>""", unsafe_allow_html=True)
             with c2:
                 if st.button("✏️", key=f"lst_{l['id']}", help="Ir a ficha"):
-                    st.session_state["goto_lead"] = l["nombre"]; st.rerun()
+                    st.session_state["goto_lead"] = l["id"]; st.rerun()
         st.markdown("<br>", unsafe_allow_html=True)
         rows_exp=[{"Urg":urg_emoji(l.get("fechaProximaAccion")),"Nombre":l["nombre"],"Empresa":l["empresa"],"Idioma":l.get("idioma","—"),"Embarcación":f"{l['tipoEmbarcacion']}·{l['modeloEslora']}","Etapa":l["etapa"],"Valor €":fmt_eur(l.get("valorOperacion",0)),"Prob%":f"{l.get('probabilidad',0)}%","Vendedor":l["asignadoA"],"Próx. Acción":l.get("fechaProximaAccion","—")} for l in filtered]
         import io as _io
@@ -1368,18 +1388,21 @@ elif "Lead" in page:
 
     # ── Selector de lead ──────────────────────────────────────────────────────
     leads_editables=sorted(all_leads_raw,key=lambda l:l.get("fechaCreacion",""),reverse=True)
-    nombres_lista=["— Crear nuevo lead —"]+[l["nombre"] for l in leads_editables]
+    _leads_edit_dict={_lead_display(l):l for l in leads_editables}
+    display_lista=["— Crear nuevo lead —"]+list(_leads_edit_dict.keys())
     _goto=st.session_state.get("goto_lead")
     if _goto:
-        st.session_state["sel_lead"] = _goto if _goto in nombres_lista else nombres_lista[0]
+        # goto_lead puede contener un ID (nuevo) o un nombre (compatibilidad)
+        _disp_goto=next((_lead_display(l) for l in leads_editables if l["id"]==_goto or l["nombre"]==_goto),None)
+        st.session_state["sel_lead"] = _disp_goto if _disp_goto in display_lista else display_lista[0]
         st.session_state["goto_lead"] = None
     if st.session_state.get("_sel_lead_request"):
         st.session_state["sel_lead"] = st.session_state["_sel_lead_request"]
         st.session_state["_sel_lead_request"] = None
-    if "sel_lead" not in st.session_state:
-        st.session_state["sel_lead"] = nombres_lista[0]
-    sel=st.selectbox("Seleccionar lead existente",nombres_lista,key="sel_lead")
-    existing=None if sel=="— Crear nuevo lead —" else next((l for l in leads_editables if l["nombre"]==sel),None)
+    if "sel_lead" not in st.session_state or st.session_state["sel_lead"] not in display_lista:
+        st.session_state["sel_lead"] = display_lista[0]
+    sel=st.selectbox("Seleccionar lead existente",display_lista,key="sel_lead")
+    existing=None if sel=="— Crear nuevo lead —" else _leads_edit_dict.get(sel)
     d=existing or {}
     if existing:
         st.markdown("---")
@@ -1440,7 +1463,7 @@ elif "Lead" in page:
                     if existing: new_lead=con_cambio_etapa(new_lead,_etapa_ant_form)
                     save_lead(new_lead,is_new=not bool(existing))
                     st.session_state["_ultimo_guardado"] = nombre
-                    st.session_state["_sel_lead_request"] = nombre
+                    st.session_state["_sel_lead_request"] = _lead_display(new_lead)
                 st.rerun()
 
     if existing:
@@ -1467,7 +1490,7 @@ elif "Lead" in page:
                     _upd["proximaAccion"]      = _prox_a.strip()
                     _upd["fechaProximaAccion"] = str(_prox_d)
                 save_lead(_upd, is_new=False)
-                st.session_state["_sel_lead_request"] = existing["nombre"]
+                st.session_state["_sel_lead_request"] = _lead_display(existing)
                 st.rerun()
 
         # ── Historial de comunicaciones ───────────────────────────────────────
@@ -1620,7 +1643,7 @@ elif "Acciones" in page:
                 </div></div>""", unsafe_allow_html=True)
         with _pc2:
             if st.button("✏️", key=f"pa_{l['id']}", help="Ir a ficha y registrar actividad"):
-                st.session_state["goto_lead"] = l["nombre"]
+                st.session_state["goto_lead"] = l["id"]
                 st.session_state["_nav_request"] = "➕ Nuevo / Editar Lead"
                 st.rerun()
     if sin_accion:
@@ -1704,15 +1727,16 @@ elif "Archivo" in page:
                 "Alta CRM":l.get("fechaCreacion",""),"Pasivo desde":l.get("fechaPasivo","")} for l in clientes_pasivos]
             st.dataframe(pd.DataFrame(_rows_p),use_container_width=True,hide_index=True)
             st.markdown("---"); st.markdown("**♻️ Reactivar cliente pasivo**")
-            _sel_p=st.selectbox("Seleccionar",["— Selecciona —"]+[l["nombre"] for l in clientes_pasivos],key="sel_pasivo")
+            _pas_by_disp={_lead_display(l):l for l in clientes_pasivos}
+            _sel_p=st.selectbox("Seleccionar",["— Selecciona —"]+list(_pas_by_disp.keys()),key="sel_pasivo")
             if _sel_p!="— Selecciona —" and st.button("♻️ Reactivar como Prospecto",key="btn_react_pas"):
-                _lp=next(l for l in clientes_pasivos if l["nombre"]==_sel_p)
+                _lp=_pas_by_disp[_sel_p]
                 _nl={**_lp,"etapa":"Prospecto","ultimaActualizacion":str(date.today())}
                 _nl.pop("fechaPasivo",None)
                 save_lead(_nl,is_new=True)
-                _cp_nuevo=[l for l in clientes_pasivos if l["nombre"]!=_sel_p]
+                _cp_nuevo=[l for l in clientes_pasivos if l.get("id")!=_lp.get("id")]
                 save_clientes_pasivos(_cp_nuevo)
-                st.success(f"✅ {_sel_p} reactivado como Prospecto."); st.rerun()
+                st.success(f"✅ {_lp.get('nombre','')} reactivado como Prospecto."); st.rerun()
     with _tab_arch:
         st.markdown("Contactos en pausa más de **6 meses**.")
         if st.session_state.get("pending_arch"):
@@ -1796,15 +1820,16 @@ elif "Archivo" in page:
         pd.DataFrame(rows_xl).to_excel(_buf_arch,index=False,engine="openpyxl")
         st.download_button("⬇️ Exportar segmento a Excel",data=_buf_arch.getvalue(),file_name=_fname,mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         st.markdown("---"); st.markdown("**♻️ Reactivar contacto**")
-        sel_r=st.selectbox("Seleccionar",["— Selecciona —"]+[l["nombre"] for l in archivo_frio])
+        _arch_by_disp={_lead_display(l):l for l in archivo_frio}
+        sel_r=st.selectbox("Seleccionar",["— Selecciona —"]+list(_arch_by_disp.keys()))
         if sel_r!="— Selecciona —" and st.button("♻️ Reactivar como Prospecto"):
-            lr=next(l for l in archivo_frio if l["nombre"]==sel_r)
+            lr=_arch_by_disp[sel_r]
             nuevo_lead={**lr,"etapa":"Prospecto","ultimaActualizacion":str(date.today())}
             nuevo_lead.pop("fechaArchivo",None)
             save_lead(nuevo_lead,is_new=True)
-            archivo_frio_nuevo=[l for l in archivo_frio if l["nombre"]!=sel_r]
+            archivo_frio_nuevo=[l for l in archivo_frio if l.get("id")!=lr.get("id")]
             save_archivo_frio(archivo_frio_nuevo)
-            st.success(f"✅ {sel_r} reactivado."); st.rerun()
+            st.success(f"✅ {lr.get('nombre','')} reactivado."); st.rerun()
 
 # ══ ASISTENTE IA ══════════════════════════════════════════════════════════════
 elif "Asistente" in page:
