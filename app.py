@@ -1493,21 +1493,23 @@ elif "Lead" in page:
         submitted=st.form_submit_button("💾 Guardar Lead",use_container_width=True)
         if submitted:
             if not nombre.strip(): st.error("El nombre es obligatorio.")
-            elif st.session_state.get("_guardando"):
-                st.warning("⏳ Guardando, por favor espera...")
             else:
-                st.session_state["_guardando"] = True
                 new_lead={"id":d.get("id","") or str(uuid.uuid4()),"nombre":nombre,"empresa":empresa,"telefono":tel,"email":email,"idioma":idioma,"tipoEmbarcacion":tipo,"modeloEslora":modelo,"presupuesto":int(valor),"usoPrevisto":uso,"asignadoA":asig,"etapa":etapa,"probabilidad":int(prob),"valorOperacion":int(valor),"fuenteLead":fuente,"proximaAccion":prox_a,"fechaProximaAccion":str(prox_d),"historial":d.get("historial",[]),"fechaCreacion":d.get("fechaCreacion","") or str(date.today()),"ultimaActualizacion":str(date.today())}
-                st.session_state["_guardando"] = False
-                _etapa_ant_form = d.get("etapa","") if existing else ""
-                if etapa in ["Cerrado Perdido","En Pausa / Recuperable"]:
-                    st.session_state["pending_causa"]={"lead":new_lead,"nombre":nombre,"etapa":etapa,"etapa_anterior":_etapa_ant_form}
+                # Guard anti-doble-guardado
+                _lead_key = f"{new_lead['id']}|{etapa}|{nombre}|{str(date.today())}"
+                if st.session_state.get("_last_lead_key") == _lead_key:
+                    st.rerun()
                 else:
-                    if existing: new_lead=con_cambio_etapa(new_lead,_etapa_ant_form)
-                    save_lead(new_lead,is_new=not bool(existing))
-                    st.session_state["_ultimo_guardado"] = nombre
-                    st.session_state["_sel_lead_request"] = _lead_display(new_lead)
-                st.rerun()
+                    st.session_state["_last_lead_key"] = _lead_key
+                    _etapa_ant_form = d.get("etapa","") if existing else ""
+                    if etapa in ["Cerrado Perdido","En Pausa / Recuperable"]:
+                        st.session_state["pending_causa"]={"lead":new_lead,"nombre":nombre,"etapa":etapa,"etapa_anterior":_etapa_ant_form}
+                    else:
+                        if existing: new_lead=con_cambio_etapa(new_lead,_etapa_ant_form)
+                        save_lead(new_lead,is_new=not bool(existing))
+                        st.session_state["_ultimo_guardado"] = nombre
+                        st.session_state["_sel_lead_request"] = _lead_display(new_lead)
+                    st.rerun()
 
     if existing:
         # ── Registrar actividad ───────────────────────────────────────────────
@@ -1526,15 +1528,21 @@ elif "Lead" in page:
             if not _act_nota.strip():
                 st.warning("Escribe la descripción antes de registrar.")
             else:
-                _hist = existing.get("historial", []).copy()
-                _hist.append({"fecha": str(date.today()), "tipo": _act_tipo, "nota": _act_nota.strip()})
-                _upd = {**existing, "historial": _hist, "ultimaActualizacion": str(date.today())}
-                if _prox_a.strip():
-                    _upd["proximaAccion"]      = _prox_a.strip()
-                    _upd["fechaProximaAccion"] = str(_prox_d)
-                save_lead(_upd, is_new=False)
-                st.session_state["_sel_lead_request"] = _lead_display(existing)
-                st.rerun()
+                # Guard anti-doble-clic: clave única por lead + tipo + texto + día
+                _act_key = f"{existing['id']}|{_act_tipo}|{_act_nota.strip()}|{date.today()}"
+                if st.session_state.get("_last_act_key") == _act_key:
+                    st.rerun()  # ya guardado en esta sesión, ignorar segunda pulsación
+                else:
+                    _hist = existing.get("historial", []).copy()
+                    _hist.append({"fecha": str(date.today()), "tipo": _act_tipo, "nota": _act_nota.strip()})
+                    _upd = {**existing, "historial": _hist, "ultimaActualizacion": str(date.today())}
+                    if _prox_a.strip():
+                        _upd["proximaAccion"]      = _prox_a.strip()
+                        _upd["fechaProximaAccion"] = str(_prox_d)
+                    save_lead(_upd, is_new=False)
+                    st.session_state["_last_act_key"] = _act_key
+                    st.session_state["_sel_lead_request"] = _lead_display(existing)
+                    st.rerun()
 
         # ── Historial de comunicaciones ───────────────────────────────────────
         st.markdown("---")
