@@ -104,7 +104,7 @@ LEAD_COLS = ["id","nombre","empresa","telefono","email","idioma","tipoEmbarcacio
 ARCH_COLS  = LEAD_COLS + ["fechaArchivo", "motivoArchivo"]
 PASIV_COLS = LEAD_COLS + ["fechaPasivo"]
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=120)
 def load_leads():
     ws = get_sheet("Leads")
     all_values = ws.get_all_values()
@@ -144,7 +144,7 @@ def load_leads():
         rows.append(lead)
     return rows
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=120)
 def load_config():
     ws = get_sheet("Config")
     all_values = ws.get_all_values()
@@ -257,7 +257,7 @@ def _deserialize_lead_rows(ws_rows, col_list):
         result.append(l)
     return result
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=120)
 def load_archivo_frio():
     try:
         if not _sheet_exists("ArchivoFrio"):
@@ -267,7 +267,7 @@ def load_archivo_frio():
         return _deserialize_lead_rows(ws.get_all_values(), ARCH_COLS)
     except: return []
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=120)
 def load_clientes_pasivos():
     try:
         if not _sheet_exists("ClientesPasivos"):
