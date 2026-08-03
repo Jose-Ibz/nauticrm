@@ -80,6 +80,8 @@ hr{border-color:#1a3050!important}
 </style>''', unsafe_allow_html=True)
 
 # ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
+import time as _time
+
 @st.cache_resource(ttl=3300)  # renovar credenciales antes de que expire el token de 1h
 def _get_spreadsheet():
     creds = Credentials.from_service_account_info(
@@ -90,15 +92,19 @@ def _get_spreadsheet():
     return gc.open_by_key(st.secrets["spreadsheet_id"])
 
 def get_sheet(tab):
-    try:
-        sh = _get_spreadsheet()
-    except gspread.exceptions.APIError:
-        _get_spreadsheet.clear()
-        sh = _get_spreadsheet()
-    try: return sh.worksheet(tab)
-    except gspread.WorksheetNotFound:
-        ws = sh.add_worksheet(title=tab, rows=1000, cols=30)
-        return ws
+    last_exc = None
+    for _attempt in range(3):
+        try:
+            sh = _get_spreadsheet()
+            try: return sh.worksheet(tab)
+            except gspread.WorksheetNotFound:
+                return sh.add_worksheet(title=tab, rows=1000, cols=30)
+        except gspread.exceptions.APIError as e:
+            last_exc = e
+            _get_spreadsheet.clear()
+            if _attempt < 2:
+                _time.sleep(2 ** _attempt)  # 1 s, 2 s antes de reintentar
+    raise last_exc
 
 LEAD_COLS = ["id","nombre","empresa","telefono","email","idioma","tipoEmbarcacion","modeloEslora","presupuesto","usoPrevisto","asignadoA","etapa","probabilidad","valorOperacion","fuenteLead","proximaAccion","fechaProximaAccion","historial","fechaCreacion","ultimaActualizacion"]
 ARCH_COLS  = LEAD_COLS + ["fechaArchivo", "motivoArchivo"]
