@@ -80,7 +80,7 @@ hr{border-color:#1a3050!important}
 </style>''', unsafe_allow_html=True)
 
 # ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
-@st.cache_resource
+@st.cache_resource(ttl=3300)  # renovar credenciales antes de que expire el token de 1h
 def get_client():
     creds = Credentials.from_service_account_info(
         dict(st.secrets["gcp_service_account"]),
@@ -89,7 +89,12 @@ def get_client():
     return gspread.authorize(creds)
 
 def get_sheet(tab):
-    sh = get_client().open_by_key(st.secrets["spreadsheet_id"])
+    try:
+        sh = get_client().open_by_key(st.secrets["spreadsheet_id"])
+    except gspread.exceptions.APIError:
+        # Token expirado o cliente stale: limpiar caché y reconectar
+        get_client.clear()
+        sh = get_client().open_by_key(st.secrets["spreadsheet_id"])
     try: return sh.worksheet(tab)
     except gspread.WorksheetNotFound:
         ws = sh.add_worksheet(title=tab, rows=1000, cols=30)
