@@ -81,20 +81,20 @@ hr{border-color:#1a3050!important}
 
 # ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
 @st.cache_resource(ttl=3300)  # renovar credenciales antes de que expire el token de 1h
-def get_client():
+def _get_spreadsheet():
     creds = Credentials.from_service_account_info(
         dict(st.secrets["gcp_service_account"]),
         scopes=["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
     )
-    return gspread.authorize(creds)
+    gc = gspread.authorize(creds)
+    return gc.open_by_key(st.secrets["spreadsheet_id"])
 
 def get_sheet(tab):
     try:
-        sh = get_client().open_by_key(st.secrets["spreadsheet_id"])
+        sh = _get_spreadsheet()
     except gspread.exceptions.APIError:
-        # Token expirado o cliente stale: limpiar caché y reconectar
-        get_client.clear()
-        sh = get_client().open_by_key(st.secrets["spreadsheet_id"])
+        _get_spreadsheet.clear()
+        sh = _get_spreadsheet()
     try: return sh.worksheet(tab)
     except gspread.WorksheetNotFound:
         ws = sh.add_worksheet(title=tab, rows=1000, cols=30)
@@ -378,9 +378,6 @@ def _lead_display(l):
 
 # ─── BACKUP ───────────────────────────────────────────────────────────────────
 BACKUP_MAX = 30  # máximo de copias a conservar
-
-def _get_spreadsheet():
-    return get_client().open_by_key(st.secrets["spreadsheet_id"])
 
 def _backup_name_today():
     return f"Bak_{date.today().strftime('%Y%m%d')}"
