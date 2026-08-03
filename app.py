@@ -195,7 +195,7 @@ def save_lead(lead, is_new=True):
             data = [dict(zip(headers, row)) for row in all_values[1:]]
             for i,r in enumerate(data):
                 if r.get("id") == lead["id"]:
-                    ws.update(f"A{i+2}:{chr(64+len(LEAD_COLS))}{i+2}", [row])
+                    ws.update([row], f"A{i+2}:{chr(64+len(LEAD_COLS))}{i+2}")
                     break
     load_leads.clear()
 
@@ -220,7 +220,7 @@ def _ensure_sheet(name, cols):
     titles = {ws.title for ws in sp.worksheets()}
     if name not in titles:
         ws = sp.add_worksheet(title=name, rows=200, cols=len(cols)+2)
-        ws.update("A1", [cols])
+        ws.update([cols], "A1")
     return get_sheet(name)
 
 def _serialize_lead_row(l, col_list):
@@ -289,14 +289,14 @@ def save_archivo_frio(archivo):
     ws = _ensure_sheet("ArchivoFrio", ARCH_COLS)
     rows = [ARCH_COLS] + [_serialize_lead_row(l, ARCH_COLS) for l in (archivo or [])]
     ws.clear()
-    ws.update("A1", rows)
+    ws.update(rows, "A1")
     load_archivo_frio.clear()
 
 def save_clientes_pasivos(pasivos):
     ws = _ensure_sheet("ClientesPasivos", PASIV_COLS)
     rows = [PASIV_COLS] + [_serialize_lead_row(l, PASIV_COLS) for l in (pasivos or [])]
     ws.clear()
-    ws.update("A1", rows)
+    ws.update(rows, "A1")
     load_clientes_pasivos.clear()
 
 def _migrate_archivo_from_config():
@@ -342,7 +342,7 @@ def save_config(vendedores, boat_types, sources, archivo=None, pasivos=None):
         ["boat_types", "||".join(boat_types)],
         ["sources", "||".join(sources)],
     ]
-    ws.update("A1", rows)
+    ws.update(rows, "A1")
     try:
         all_vals = ws.get_all_values()
         if len(all_vals) > len(rows):
@@ -406,7 +406,7 @@ def _backup_sheet(sp, src_name, bak_prefix, today_str, existing_titles):
     nrows = max(len(data) + 10, 50)
     ncols = max(len(data[0]) if data else 5, 5)
     bak_ws = sp.add_worksheet(title=bname, rows=nrows, cols=ncols)
-    if data: bak_ws.update("A1", data)
+    if data: bak_ws.update(data, "A1")
 
 def _do_backup():
     """Crea la copia del día si no existe. Devuelve (creada:bool, msg:str)."""
@@ -423,7 +423,7 @@ def _do_backup():
         nrows = max(len(all_data) + 10, 50)
         bak_ws = sp.add_worksheet(title=bname, rows=nrows, cols=len(LEAD_COLS)+2)
         if all_data:
-            bak_ws.update("A1", all_data)
+            bak_ws.update(all_data, "A1")
         # Backup de las demás hojas importantes
         existing_titles.add(bname)
         _backup_sheet(sp, "Config", "BakCfg_", today_str, existing_titles)
@@ -454,7 +454,7 @@ def _restore_backup(sheet_name):
             return False, "La copia está vacía."
         leads_ws = get_sheet("Leads")
         leads_ws.clear()
-        leads_ws.update("A1", all_data)
+        leads_ws.update(all_data, "A1")
         load_leads.clear()
         return True, f"✅ Leads restaurados desde {sheet_name} ({len(all_data)-1} registros)"
     except Exception as e:
