@@ -883,45 +883,52 @@ elif "Informes" in page:
         if not fd:
             st.info("Sin datos de pipeline todavía.")
         else:
-            # ── Embudo triangular ─────────────────────────────────────────────
+            # ── Embudo SVG de forma fija ──────────────────────────────────────
             fd_f = [d for d in fd if d["Etapa"] in FUNNEL_STAGES]
             if fd_f:
-                _n_ref = fd_f[0]["Leads"] if fd_f[0]["Leads"] > 0 else 1
-                _custom_txt = []
+                _n_ref  = fd_f[0]["Leads"] if fd_f[0]["Leads"] > 0 else 1
+                _n      = len(fd_f)
+                _W      = 520          # ancho total del SVG
+                _SH     = 80           # alto de cada franja
+                _W_TOP  = 500          # ancho máximo (franja superior)
+                _W_BOT  = 160          # ancho mínimo (franja inferior)
+                _cx     = _W / 2
+                _total_h = _n * _SH + 20
+                _svgparts = [
+                    f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_W} {_total_h}" '
+                    f'style="display:block;margin:0 auto;max-width:540px">'
+                ]
                 for _i, _d in enumerate(fd_f):
-                    _pct = _d["Leads"] / _n_ref * 100
+                    _wt = _W_TOP - _i * (_W_TOP - _W_BOT) / max(_n - 1, 1)
+                    _wb = _W_TOP - (_i + 1) * (_W_TOP - _W_BOT) / max(_n - 1, 1)
+                    _yt = _i * _SH
+                    _yb = (_i + 1) * _SH
+                    _xl_t = _cx - _wt / 2; _xr_t = _cx + _wt / 2
+                    _xl_b = _cx - _wb / 2; _xr_b = _cx + _wb / 2
+                    _pts  = f"{_xl_t:.1f},{_yt} {_xr_t:.1f},{_yt} {_xr_b:.1f},{_yb} {_xl_b:.1f},{_yb}"
+                    _col  = _d["Color"]
+                    _pct  = _d["Leads"] / _n_ref * 100
+                    _val  = fmt_eur(_d["Valor"])
                     _conv = ""
                     if _i > 0 and fd_f[_i-1]["Leads"] > 0:
-                        _conv = f"  ↓ {_d['Leads']/fd_f[_i-1]['Leads']*100:.0f}% conv."
-                    _custom_txt.append(
-                        f"<b>{_d['Etapa']}</b><br>"
-                        f"{_d['Leads']}  ({_pct:.1f}%){_conv}<br>"
-                        f"<span style='color:#c9a84c'>{fmt_eur(_d['Valor'])}</span>"
-                    )
-                _fig_f = go.Figure(go.Funnel(
-                    y=[_d["Etapa"] for _d in fd_f],
-                    x=[max(_d["Leads"], 0.05) for _d in fd_f],
-                    text=_custom_txt,
-                    textinfo="text",
-                    textfont=dict(color="white", size=13, family="Inter, Arial"),
-                    marker=dict(
-                        color=[_d["Color"] for _d in fd_f],
-                        line=dict(color="#060e1a", width=2)
-                    ),
-                    connector=dict(line=dict(color="#1a3050", width=1)),
-                    opacity=0.92,
-                ))
-                _fig_f.update_layout(
-                    paper_bgcolor="#0d1e35", plot_bgcolor="#0d1e35",
-                    font=dict(color="#e8e0d0", family="Inter, Arial"),
-                    margin=dict(t=20, b=20, l=80, r=80),
-                    height=80 + len(fd_f) * 72,
-                    showlegend=False,
-                    yaxis=dict(showticklabels=False),
-                )
-                _col_f, _ = st.columns([3, 1])
-                with _col_f:
-                    st.plotly_chart(_fig_f, use_container_width=True)
+                        _conv = f"  · ↓{_d['Leads']/fd_f[_i-1]['Leads']*100:.0f}%"
+                    _yc   = _yt + _SH / 2
+                    _svgparts += [
+                        f'<polygon points="{_pts}" fill="{_col}" stroke="#060e1a" stroke-width="1.5"/>',
+                        f'<text x="{_cx}" y="{_yc-20:.1f}" text-anchor="middle" '
+                        f'font-family="Inter,Arial,sans-serif" font-size="13" font-weight="700" fill="white">'
+                        f'{_html.escape(_d["Etapa"])}</text>',
+                        f'<text x="{_cx}" y="{_yc+2:.1f}" text-anchor="middle" '
+                        f'font-family="Inter,Arial,sans-serif" font-size="12" fill="rgba(255,255,255,0.9)">'
+                        f'{_d["Leads"]} ({_pct:.1f}%){_conv}</text>',
+                        f'<text x="{_cx}" y="{_yc+20:.1f}" text-anchor="middle" '
+                        f'font-family="Inter,Arial,sans-serif" font-size="12" font-weight="600" fill="#f0d060">'
+                        f'{_val}</text>',
+                    ]
+                _svgparts.append("</svg>")
+                _col_svg, _ = st.columns([2, 1])
+                with _col_svg:
+                    st.markdown("".join(_svgparts), unsafe_allow_html=True)
             _filas_f="".join(f"""<tr>
                 <td style='padding:8px 14px;color:#e8e0d0;font-size:0.83rem;border-bottom:1px solid #1a3050'>
                   <span style='display:inline-block;width:10px;height:10px;border-radius:50%;background:{d["Color"]};margin-right:8px;vertical-align:middle'></span>{d["Etapa"]}
