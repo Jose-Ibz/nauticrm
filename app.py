@@ -857,15 +857,63 @@ elif "Lista" in page:
 # ══ INFORMES ══════════════════════════════════════════════════════════════════
 elif "Informes" in page:
     st.markdown("## 📊 Informes y Análisis")
-    active=[l for l in all_leads_raw if l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"]]
-    pipeline=sum(l.get("valorOperacion",0) for l in active)
-    forecast=sum(l.get("valorOperacion",0)*l.get("probabilidad",0)/100 for l in all_leads_raw if l["etapa"]!="Cerrado Perdido")
-    no_act=[l for l in active if days_since(l.get("ultimaActualizacion") or l.get("fechaCreacion",""))>7]
-    k1,k2,k3,k4=st.columns(4)
-    k1.metric("Total Leads",len(all_leads_raw),f"{len(active)} activos")
-    k2.metric("Pipeline Activo",fmt_eur(pipeline))
-    k3.metric("Forecast Mensual",fmt_eur(forecast),"Valor × Prob%")
-    k4.metric("Sin actividad +7d",len(no_act),delta="⚠️ Revisar" if no_act else "✅ OK",delta_color="off")
+    # ── Cálculo de KPIs ───────────────────────────────────────────────────────
+    _hoy      = date.today()
+    _mes_ini  = _hoy.replace(day=1)
+    _mes_ant  = (_mes_ini - timedelta(days=1)).replace(day=1)
+    active    = [l for l in all_leads_raw if l["etapa"] not in ["Cerrado Ganado","Cerrado Perdido","En Pausa / Recuperable"]]
+    _ganados  = [l for l in all_leads_raw if l["etapa"] == "Cerrado Ganado"]
+    _perdidos = [l for l in all_leads_raw if l["etapa"] == "Cerrado Perdido"]
+    _pipeline = sum(l.get("valorOperacion",0) for l in active)
+    _forecast = sum(l.get("valorOperacion",0)*l.get("probabilidad",0)/100 for l in all_leads_raw if l["etapa"] not in ["Cerrado Perdido","En Pausa / Recuperable"])
+    _revenue  = sum(l.get("valorOperacion",0) for l in _ganados)
+    _n_gan    = len(_ganados); _n_per = len(_perdidos)
+    _conv     = _n_gan/(_n_gan+_n_per)*100 if (_n_gan+_n_per)>0 else 0
+    _ticket   = _revenue//_n_gan if _n_gan>0 else 0
+    _propuestas = len([l for l in all_leads_raw if l["etapa"] in ["Propuesta Enviada","Negociación"]])
+    _pendientes = len([l for l in active if l.get("proximaAccion","").strip()])
+    _vencidas   = len([l for l in active if l.get("fechaProximaAccion") and
+                       days_since(l["fechaProximaAccion"]) > 0])
+    _sin_act    = [l for l in active if days_since(l.get("ultimaActualizacion") or l.get("fechaCreacion",""))>7]
+    # Variación mes actual vs mes anterior
+    _act_este_mes  = len([l for l in active if (l.get("fechaCreacion","") or "") >= str(_mes_ini)])
+    _act_mes_ant   = len([l for l in active if str(_mes_ant) <= (l.get("fechaCreacion","") or "") < str(_mes_ini)])
+    _var_act = f"↗ +{_act_este_mes} nuevos este mes" if _act_este_mes else "Sin altas este mes"
+    _gan_mes  = len([l for l in _ganados if (l.get("ultimaActualizacion","") or "") >= str(_mes_ini)])
+
+    def _kpi_card(titulo, valor, subtitulo, icono, color_icono, color_sub="#2ecc71"):
+        return f"""<div style="background:#0d1e35;border:1px solid #1a3050;border-radius:12px;
+            padding:18px 20px;position:relative;min-height:96px;height:100%">
+          <div style="font-size:0.68rem;color:#7a8fa6;text-transform:uppercase;
+              letter-spacing:1px;margin-bottom:6px;padding-right:44px">{titulo}</div>
+          <div style="font-size:1.75rem;font-weight:700;color:#e8e0d0;line-height:1.1;
+              font-family:'Playfair Display',serif">{valor}</div>
+          <div style="font-size:0.72rem;color:{color_sub};margin-top:7px">{subtitulo}</div>
+          <div style="position:absolute;top:16px;right:16px;background:{color_icono};
+              border-radius:9px;width:38px;height:38px;display:flex;align-items:center;
+              justify-content:center;font-size:18px">{icono}</div>
+        </div>"""
+
+    _r1c = st.columns(4)
+    _r1c[0].markdown(_kpi_card("Leads Activos", len(active), _var_act, "👥", "#2563eb"), unsafe_allow_html=True)
+    _r1c[1].markdown(_kpi_card("Oportunidades Abiertas", len([l for l in active if l["etapa"] in ["Prospecto","Contactado","Interés Confirmado"]]),
+        f"↗ {len([l for l in active if l['etapa']=='Prospecto'])} prospectos nuevos", "🎯", "#7c3aed"), unsafe_allow_html=True)
+    _r1c[2].markdown(_kpi_card("Propuestas Activas", _propuestas,
+        f"↗ {len([l for l in all_leads_raw if l['etapa']=='Propuesta Enviada'])} enviadas · {len([l for l in all_leads_raw if l['etapa']=='Negociación'])} en negociación",
+        "📄", "#ea580c"), unsafe_allow_html=True)
+    _r1c[3].markdown(_kpi_card("Acciones Pendientes", _pendientes,
+        f"🔴 {_vencidas} vencidas" if _vencidas else "✅ Sin vencidas", "✅", "#16a34a",
+        color_sub="#e74c3c" if _vencidas else "#2ecc71"), unsafe_allow_html=True)
+    st.markdown("<div style='margin:10px 0'></div>", unsafe_allow_html=True)
+    _r2c = st.columns(4)
+    _r2c[0].markdown(_kpi_card("Ventas Cerradas", fmt_eur(_revenue),
+        f"↗ {_gan_mes} cierre{'s' if _gan_mes!=1 else ''} este mes · {_n_gan} total", "💰", "#16a34a"), unsafe_allow_html=True)
+    _r2c[1].markdown(_kpi_card("Tasa de Conversión", f"{_conv:.1f}%",
+        f"{_n_gan} ganados · {_n_per} perdidos", "📈", "#e74c3c"), unsafe_allow_html=True)
+    _r2c[2].markdown(_kpi_card("Pipeline Activo", fmt_eur(_pipeline),
+        f"Forecast ponderado: {fmt_eur(int(_forecast))}", "🏷️", "#b8860b"), unsafe_allow_html=True)
+    _r2c[3].markdown(_kpi_card("Ticket Medio", fmt_eur(_ticket),
+        f"Sobre {_n_gan} venta{'s' if _n_gan!=1 else ''} cerrada{'s' if _n_gan!=1 else ''}", "🎫", "#7c3aed"), unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     tab1,tab2,tab3,tab4=st.tabs(["🔻 Embudo","📊 Pipeline & Fuentes","🤖 Informe IA","📖 Diario"])
     with tab1:
