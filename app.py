@@ -883,51 +883,45 @@ elif "Informes" in page:
         if not fd:
             st.info("Sin datos de pipeline todavía.")
         else:
-            c1,c2=st.columns(2)
-            with c1:
-                st.markdown("**Por número de leads**")
-                fig1=go.Figure(go.Bar(
-                    y=[d["Etapa"] for d in fd],
-                    x=[1]*len(fd),
-                    orientation="h",
-                    text=[f"<b>{d['Leads']}</b> leads" for d in fd],
-                    textposition="inside",
-                    textfont=dict(color="white",size=15,family="Arial Bold"),
-                    marker=dict(color=[d["Color"] for d in fd],line=dict(color="rgba(0,0,0,0.15)",width=1)),
-                    insidetextanchor="middle",
+            # ── Embudo triangular ─────────────────────────────────────────────
+            fd_f = [d for d in fd if d["Etapa"] in FUNNEL_STAGES]
+            if fd_f:
+                _n_ref = fd_f[0]["Leads"] if fd_f[0]["Leads"] > 0 else 1
+                _custom_txt = []
+                for _i, _d in enumerate(fd_f):
+                    _pct = _d["Leads"] / _n_ref * 100
+                    _conv = ""
+                    if _i > 0 and fd_f[_i-1]["Leads"] > 0:
+                        _conv = f"  ↓ {_d['Leads']/fd_f[_i-1]['Leads']*100:.0f}% conv."
+                    _custom_txt.append(
+                        f"<b>{_d['Etapa']}</b><br>"
+                        f"{_d['Leads']}  ({_pct:.1f}%){_conv}<br>"
+                        f"<span style='color:#c9a84c'>{fmt_eur(_d['Valor'])}</span>"
+                    )
+                _fig_f = go.Figure(go.Funnel(
+                    y=[_d["Etapa"] for _d in fd_f],
+                    x=[max(_d["Leads"], 0.05) for _d in fd_f],
+                    text=_custom_txt,
+                    textinfo="text",
+                    textfont=dict(color="white", size=13, family="Inter, Arial"),
+                    marker=dict(
+                        color=[_d["Color"] for _d in fd_f],
+                        line=dict(color="#060e1a", width=2)
+                    ),
+                    connector=dict(line=dict(color="#1a3050", width=1)),
+                    opacity=0.92,
                 ))
-                fig1.update_layout(
-                    plot_bgcolor="#091220",paper_bgcolor="#0d1e35",font_color="#e8e0d0",
-                    margin=dict(t=20,b=20,l=10,r=10),height=420,
-                    xaxis=dict(showgrid=False,showticklabels=False,range=[0,1]),
-                    yaxis=dict(tickfont=dict(size=11,color="white"),autorange="reversed"),
-                    bargap=0.25,
-                    uniformtext=dict(mode="hide",minsize=10),
+                _fig_f.update_layout(
+                    paper_bgcolor="#0d1e35", plot_bgcolor="#0d1e35",
+                    font=dict(color="#e8e0d0", family="Inter, Arial"),
+                    margin=dict(t=20, b=20, l=80, r=80),
+                    height=80 + len(fd_f) * 72,
+                    showlegend=False,
+                    yaxis=dict(showticklabels=False),
                 )
-                fig1.update_traces(width=0.6)
-                st.plotly_chart(fig1,use_container_width=True)
-            with c2:
-                st.markdown("**Por valor (€)**")
-                fig2=go.Figure(go.Bar(
-                    y=[d["Etapa"] for d in fd],
-                    x=[1]*len(fd),
-                    orientation="h",
-                    text=[f"<b>{fmt_eur(d['Valor'])}</b>" for d in fd],
-                    textposition="inside",
-                    textfont=dict(color="white",size=16,family="Arial Bold"),
-                    marker=dict(color=[d["Color"] for d in fd],line=dict(color="rgba(0,0,0,0.15)",width=1)),
-                    insidetextanchor="middle",
-                ))
-                fig2.update_layout(
-                    plot_bgcolor="#091220",paper_bgcolor="#0d1e35",font_color="#e8e0d0",
-                    margin=dict(t=20,b=20,l=10,r=10),height=420,
-                    xaxis=dict(showgrid=False,showticklabels=False,range=[0,1]),
-                    yaxis=dict(tickfont=dict(size=11,color="white"),autorange="reversed"),
-                    bargap=0.25,
-                    uniformtext=dict(mode="hide",minsize=10),
-                )
-                fig2.update_traces(width=0.6)
-                st.plotly_chart(fig2,use_container_width=True)
+                _col_f, _ = st.columns([3, 1])
+                with _col_f:
+                    st.plotly_chart(_fig_f, use_container_width=True)
             _filas_f="".join(f"""<tr>
                 <td style='padding:8px 14px;color:#e8e0d0;font-size:0.83rem;border-bottom:1px solid #1a3050'>
                   <span style='display:inline-block;width:10px;height:10px;border-radius:50%;background:{d["Color"]};margin-right:8px;vertical-align:middle'></span>{d["Etapa"]}
