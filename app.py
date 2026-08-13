@@ -124,6 +124,8 @@ h1,h2,h3{font-family:'Playfair Display',serif!important;color:#c9a84c!important}
 .stTextInput input,.stNumberInput input,.stTextArea textarea{background:#091220!important;color:#e8e0d0!important;border:1px solid #1a3050!important}
 .stButton>button,[data-testid="stFormSubmitButton"]>button{background:#c9a84c!important;color:#0a1628!important;font-weight:700!important;border:none!important;border-radius:6px!important}
 .stButton>button:hover,[data-testid="stFormSubmitButton"]>button:hover{opacity:.88!important}
+[class*="st-key-btn_gen_email"]>button{background:linear-gradient(135deg,#0077b6,#00b4d8)!important;color:#fff!important;font-size:1rem!important;padding:.6rem 1rem!important;letter-spacing:.3px!important}
+[class*="st-key-btn_gen_email"]>button:hover{background:linear-gradient(135deg,#005f8e,#0096c7)!important;opacity:1!important}
 .stDataFrame{border:1px solid #1a3050!important;border-radius:8px!important}
 .stTabs [data-baseweb="tab-list"]{background:#0a1628;border-radius:8px;gap:4px;padding:4px}
 .stTabs [data-baseweb="tab"]{background:transparent!important;color:#7a8fa6!important;border-radius:6px!important}
