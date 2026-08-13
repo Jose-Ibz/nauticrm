@@ -599,8 +599,16 @@ def _generar_email(lead, info_web, url_modelo):
     import anthropic as _ant
     _ac = _ant.Anthropic(api_key=st.secrets["anthropic_api_key"])
 
+    _IDIOMA_MAP = {
+        "Español":   "Spanish",   "Inglés":    "English",
+        "Francés":   "French",    "Italiano":  "Italian",
+        "Alemán":    "German",    "Portugués": "Portuguese",
+        "Holandés":  "Dutch",     "Ruso":      "Russian",
+        "Árabe":     "Arabic",    "Chino":     "Chinese",
+    }
     nombre   = lead.get("nombre","")
     idioma   = lead.get("idioma","Español")
+    idioma_en = _IDIOMA_MAP.get(idioma, idioma)  # nombre en inglés para el modelo
     tipo     = lead.get("tipoEmbarcacion","")
     modelo   = lead.get("modeloEslora","")
     pres     = lead.get("presupuesto",0)
@@ -614,9 +622,9 @@ def _generar_email(lead, info_web, url_modelo):
     else:
         aviso_web = "\n⚠️ No se encontró información específica del modelo en la web del astillero. Genera un email de presentación general."
 
-    prompt = f"""Eres el equipo comercial de Supermercado Náutico, distribuidores oficiales para Ibiza y Formentera.
+    prompt = f"""You are the sales team of Supermercado Náutico, official distributors for Ibiza and Formentera.
 
-Genera un email comercial en {idioma} para este cliente:
+Write a commercial follow-up email in {idioma_en} for this client:
 - Nombre: {nombre}
 - Interés: {tipo} {modelo}
 - Presupuesto aprox: {"€{:,}".format(pres) if pres else "No indicado"}
@@ -624,17 +632,17 @@ Genera un email comercial en {idioma} para este cliente:
 - Etapa comercial: {etapa}
 {info_block}{aviso_web}
 
-INSTRUCCIONES:
-- Escríbelo en {idioma}
-- Agradece su interés/visita de forma natural y cálida
-- Preséntanos como distribuidores exclusivos para Ibiza y Formentera{"de " + tipo.split()[0] if tipo else ""}
-{"- Destaca 2-3 puntos clave del modelo basándote en la info de la web (sin inventar datos)" if info_web else "- Email de presentación general: quiénes somos, cómo podemos ayudar, disposición total"}
-- Invita al cliente a visitarnos o a agendar una llamada/reunión para aclarar lo que considere oportuno — NO menciones "showroom"
-- Trato de USTED siempre, es un cliente nuevo que no conocemos — nunca tutees
-- Tono profesional pero cercano, sin ser demasiado comercial
-- Añade asunto del email en la primera línea: "Asunto: ..."
-- Firma: Equipo Supermercado Náutico — Distribuidores Ibiza & Formentera
-- IMPORTANTE: escribe en texto plano sin ningún formato markdown. No uses asteriscos, almohadillas ni ningún marcador de formato."""
+INSTRUCTIONS (follow strictly):
+- Write the ENTIRE email in {idioma_en} — this is mandatory, do not use any other language
+- Thank the client for their interest/visit naturally and warmly
+- Present us as exclusive distributors for Ibiza and Formentera{"of " + tipo.split()[0] if tipo else ""}
+{"- Highlight 2-3 key features of the model based on the web info (do not invent data)" if info_web else "- General presentation email: who we are, how we can help, full availability"}
+- Invite the client to visit us or schedule a call/meeting to clarify whatever they need — do NOT mention "showroom"
+- Always use formal address (usted/Sie/vous/Lei depending on language) — never informal
+- Professional but warm tone, not overly salesy
+- First line must be the subject: "Subject: ..." (in {idioma_en})
+- Signature: Equipo Supermercado Náutico — Distribuidores Ibiza & Formentera
+- IMPORTANT: plain text only — no markdown, no asterisks, no # symbols, no formatting markers of any kind."""
 
     resp = _ac.messages.create(
         model="claude-haiku-4-5-20251001",
