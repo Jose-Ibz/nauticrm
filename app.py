@@ -2090,8 +2090,8 @@ div.st-key-btn_gen_email button,
                     st.text_input("📩 Asunto:", value=_asunto, key="email_asunto_display")
                 st.text_area("Cuerpo:", value=_cuerpo, height=360, key="email_output_area")
 
-                # Botón copiar — lee el valor actual del textarea (incluso si fue editado)
-                # Fallback: texto original generado
+                # Botón copiar — usa execCommand('copy') en un textarea oculto del iframe
+                # (más compatible que navigator.clipboard, no requiere permisos de iframe)
                 _cuerpo_fallback = st.session_state.get("email_output_area", _cuerpo)
                 _cuerpo_js = _cuerpo_fallback.replace('\\', '\\\\').replace('`', '\\`').replace('${', '\\${')
                 _stc.html(f"""
@@ -2099,15 +2099,35 @@ div.st-key-btn_gen_email button,
     onclick="(function(){{
         var txt = `{_cuerpo_js}`;
         try {{
-            var el = window.parent.document.querySelector('[class*=\\"email_output_area\\"] textarea');
-            if (el && el.value) {{ txt = el.value; }}
+            var parentTextareas = window.parent.document.querySelectorAll('textarea');
+            var best = null;
+            for (var i = 0; i < parentTextareas.length; i++) {{
+                if (!best || parentTextareas[i].value.length > best.value.length) {{
+                    best = parentTextareas[i];
+                }}
+            }}
+            if (best && best.value.length > 50) {{ txt = best.value; }}
         }} catch(e) {{}}
-        navigator.clipboard.writeText(txt).then(function(){{
-            document.getElementById('copybtn').innerHTML='✅ &nbsp;¡Copiado!';
-            setTimeout(function(){{document.getElementById('copybtn').innerHTML='📋 &nbsp;Copiar cuerpo del email';}},2200);
-        }}).catch(function(){{
-            document.getElementById('copybtn').innerHTML='⚠️ &nbsp;Error al copiar';
-        }});
+        var ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        var ok = false;
+        try {{ ok = document.execCommand('copy'); }} catch(e) {{}}
+        document.body.removeChild(ta);
+        var btn = document.getElementById('copybtn');
+        if (ok) {{
+            btn.innerHTML = '✅ &nbsp;¡Copiado!';
+            setTimeout(function(){{btn.innerHTML='📋 &nbsp;Copiar cuerpo del email';}}, 2200);
+        }} else {{
+            navigator.clipboard.writeText(txt)
+                .then(function(){{
+                    btn.innerHTML='✅ &nbsp;¡Copiado!';
+                    setTimeout(function(){{btn.innerHTML='📋 &nbsp;Copiar cuerpo del email';}},2200);
+                }})
+                .catch(function(){{btn.innerHTML='⚠️ &nbsp;Error al copiar';}});
+        }}
     }})()"
     style="background:linear-gradient(135deg,#0077b6,#00b4d8);color:#fff;border:none;
            border-radius:6px;padding:11px 18px;cursor:pointer;font-weight:700;
