@@ -57,6 +57,33 @@ STAGE_COLORS = {
     "Cerrado Perdido":"#dc2626","En Pausa / Recuperable":"#374151",
 }
 
+# Webs oficiales de astilleros para generación de emails
+BRAND_SITES = {
+    "Jeanneau":    "jeanneau.com",
+    "Beneteau":    "beneteau.com",
+    "Sunseeker":   "sunseeker.com",
+    "Princess":    "princess.co.uk",
+    "Azimut":      "azimut-yachts.com",
+    "Ferretti":    "ferretti-yachts.com",
+    "Bavaria":     "bavariayachts.com",
+    "Hanse":       "hanseyachts.com",
+    "Lagoon":      "catamarans.com",
+    "Fairline":    "fairline.com",
+    "Cranchi":     "cranchi.com",
+    "Sessa":       "sessamarine.it",
+    "Prestige":    "prestige-yachts.com",
+    "Dufour":      "dufour-yachts.com",
+    "X-Yachts":    "x-yachts.com",
+    "Elan":        "elan-yachts.com",
+    "Nautitech":   "nautitech-catamarans.com",
+    "Fountaine Pajot": "fountaine-pajot.com",
+    "Leopard":     "leopardcatamarans.com",
+    "Sasga":       "sasgayachts.com",
+    "Quicksilver": "quicksilver-boats.com",
+    "Ranieri":     "ranieri.it",
+    "Fiart":       "fiart.it",
+}
+
 st.markdown('''
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600;700&display=swap');
@@ -381,6 +408,109 @@ def _lead_display(l):
     """Clave de visualización única para selectboxes: 'Nombre · Empresa'."""
     empresa = (l.get("empresa") or "").strip()
     return f"{l['nombre']} · {empresa}" if empresa else l["nombre"]
+
+# ─── EMAIL GENERATOR ──────────────────────────────────────────────────────────
+import urllib.parse as _urlparse, re as _re
+
+def _detectar_marca(tipo_emb):
+    """Detecta la marca del astillero a partir del campo tipoEmbarcacion."""
+    if not tipo_emb: return None, None
+    t = tipo_emb.strip()
+    for marca in sorted(BRAND_SITES.keys(), key=len, reverse=True):
+        if marca.lower() in t.lower():
+            modelo = _re.sub(_re.escape(marca), "", t, flags=_re.IGNORECASE).strip(" -·/")
+            return marca, modelo or t
+    # Si no hay marca conocida, devolver el texto completo como modelo sin marca
+    return None, t
+
+def _fetch_model_info(marca, modelo_eslora):
+    """Busca info del modelo en la web oficial del astillero vía DuckDuckGo."""
+    import requests as _rq
+    site = BRAND_SITES.get(marca, "")
+    if not site:
+        return None, None, f"Astillero '{marca}' no está en el directorio de webs."
+
+    # Componer búsqueda: marca + modelo en la web oficial
+    query = f"{marca} {modelo_eslora} site:{site}"
+    hdrs  = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120"}
+    try:
+        sr = _rq.get(
+            f"https://html.duckduckgo.com/html/?q={_urlparse.quote(query)}",
+            headers=hdrs, timeout=12
+        )
+        # Extraer primera URL del dominio oficial
+        urls = _re.findall(
+            r'href="(https?://(?:www\.)?' + _re.escape(site) + r'[^"&]*)"',
+            sr.text
+        )
+        # Filtrar redirecciones de DuckDuckGo
+        urls = [u for u in urls if site in u and "duckduckgo" not in u]
+        if not urls:
+            return None, None, f"No se encontró la página de '{modelo_eslora}' en {site}."
+
+        page_url = urls[0]
+        pr = _rq.get(page_url, headers=hdrs, timeout=12)
+        pr.encoding = "utf-8"
+        raw = pr.text
+
+        # Limpiar HTML: eliminar scripts, estilos, nav, footer
+        for tag in ("script","style","nav","footer","header","noscript"):
+            raw = _re.sub(rf"<{tag}[^>]*>.*?</{tag}>", " ", raw, flags=_re.DOTALL|_re.IGNORECASE)
+        text = _re.sub(r"<[^>]+>", " ", raw)
+        text = _re.sub(r"\s+", " ", text).strip()
+
+        # Quedarnos con los primeros 3.500 caracteres útiles
+        return text[:3500], page_url, None
+
+    except Exception as e:
+        return None, None, str(e)
+
+def _generar_email(lead, info_web, url_modelo):
+    """Genera email de seguimiento con Claude. info_web puede ser None."""
+    import anthropic as _ant
+    _ac = _ant.Anthropic(api_key=st.secrets["anthropic_api_key"])
+
+    nombre   = lead.get("nombre","")
+    idioma   = lead.get("idioma","Español")
+    tipo     = lead.get("tipoEmbarcacion","")
+    modelo   = lead.get("modeloEslora","")
+    pres     = lead.get("presupuesto",0)
+    notas    = lead.get("usoPrevisto","")
+    etapa    = lead.get("etapa","")
+
+    info_block = ""
+    aviso_web  = ""
+    if info_web:
+        info_block = f"\n\nINFORMACIÓN OFICIAL DEL MODELO (extraída de {url_modelo}):\n{info_web}"
+    else:
+        aviso_web = "\n⚠️ No se encontró información específica del modelo en la web del astillero. Genera un email de presentación general."
+
+    prompt = f"""Eres el equipo comercial de Náutica Viamar, distribuidores oficiales para Ibiza y Formentera.
+
+Genera un email comercial en {idioma} para este cliente:
+- Nombre: {nombre}
+- Interés: {tipo} {modelo}
+- Presupuesto aprox: {"€{:,}".format(pres) if pres else "No indicado"}
+- Notas internas (NO mencionar textualmente): {notas}
+- Etapa comercial: {etapa}
+{info_block}{aviso_web}
+
+INSTRUCCIONES:
+- Escríbelo en {idioma}
+- Agradece su interés/visita de forma natural y cálida
+- Preséntanos como distribuidores exclusivos para Ibiza y Formentera{"de " + tipo.split()[0] if tipo else ""}
+{"- Destaca 2-3 puntos clave del modelo basándote en la info de la web (sin inventar datos)" if info_web else "- Email de presentación general: quiénes somos, cómo podemos ayudar, disposición total"}
+- Invita a visitar el showroom o agendar una llamada
+- Tono profesional pero cercano, sin ser demasiado comercial
+- Añade asunto del email en la primera línea: "Asunto: ..."
+- Firma: Equipo Náutica Viamar — Distribuidores Ibiza & Formentera"""
+
+    resp = _ac.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=1800,
+        messages=[{"role":"user","content":prompt}]
+    )
+    return resp.content[0].text
 
 # ─── BACKUP ───────────────────────────────────────────────────────────────────
 BACKUP_MAX = 30  # máximo de copias a conservar
@@ -1618,6 +1748,40 @@ elif "Lead" in page:
                     </div>
                     <div style='color:#e8e0d0;font-size:0.84rem;white-space:pre-wrap'>{_html.escape(h['nota'])}</div>
                 </div>""", unsafe_allow_html=True)
+
+        # ── Generador de email ────────────────────────────────────────────────
+        st.markdown("---")
+        with st.expander("✉️ Generar email de seguimiento con IA"):
+            _marca_det, _modelo_det = _detectar_marca(
+                (existing.get("tipoEmbarcacion","") + " " + existing.get("modeloEslora","")).strip()
+            )
+            if _marca_det:
+                st.info(f"🔍 Se buscará: **{_marca_det}** › **{_modelo_det}** en `{BRAND_SITES.get(_marca_det,'')}`")
+            else:
+                st.warning("⚠️ Marca no reconocida en el directorio — se generará email de presentación general.")
+
+            _idioma_email = existing.get("idioma","Español")
+            st.caption(f"Idioma del email: **{_idioma_email}** (según ficha del cliente)")
+
+            if st.button("✉️ Generar email ahora", key="btn_gen_email", use_container_width=True):
+                with st.spinner("Buscando información del modelo y redactando…"):
+                    _info_w, _url_w, _err_w = (None, None, None)
+                    if _marca_det:
+                        _info_w, _url_w, _err_w = _fetch_model_info(_marca_det, _modelo_det)
+                    if _err_w:
+                        st.warning(f"⚠️ {_err_w} — Se generará email general sin info del modelo.")
+                    elif _url_w:
+                        st.success(f"✅ Info encontrada en: {_url_w}")
+                    _email_txt = _generar_email(existing, _info_w, _url_w)
+                    st.session_state["_email_generado"] = _email_txt
+
+            if st.session_state.get("_email_generado"):
+                st.markdown("**📧 Email generado — copia y edita según necesites:**")
+                st.text_area("", value=st.session_state["_email_generado"],
+                             height=380, key="email_output_area")
+                if st.button("🗑️ Limpiar email", key="btn_clear_email"):
+                    st.session_state["_email_generado"] = None
+                    st.rerun()
 
         # ── Ficha imprimible ──────────────────────────────────────────────────
         st.markdown("---")
