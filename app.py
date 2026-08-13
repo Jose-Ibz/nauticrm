@@ -112,15 +112,6 @@ hr{border-color:#1a3050!important}
 # ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
 import time as _time
 
-@st.cache_resource(ttl=3300)  # renovar credenciales antes de que expire el token de 1h
-def _get_spreadsheet():
-    creds = Credentials.from_service_account_info(
-        dict(st.secrets["gcp_service_account"]),
-        scopes=["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
-    )
-    gc = gspread.authorize(creds)
-    return gc.open_by_key(st.secrets["spreadsheet_id"])
-
 def _api_error_msg(e):
     """Extrae código HTTP y mensaje real del APIError de gspread."""
     try:
@@ -129,21 +120,39 @@ def _api_error_msg(e):
     except Exception:
         return str(e)
 
+@st.cache_resource(ttl=3300)  # renovar credenciales antes de que expire el token de 1h
+def _get_sh_and_ws():
+    """Abre la hoja y carga el índice completo de worksheets en UNA sola lectura."""
+    creds = Credentials.from_service_account_info(
+        dict(st.secrets["gcp_service_account"]),
+        scopes=["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
+    )
+    gc = gspread.authorize(creds)
+    sh = gc.open_by_key(st.secrets["spreadsheet_id"])
+    ws_dict = {ws.title: ws for ws in sh.worksheets()}
+    return sh, ws_dict
+
+def _get_spreadsheet():
+    sh, _ = _get_sh_and_ws()
+    return sh
+
 def get_sheet(tab):
     last_exc = None
     for _attempt in range(3):
         try:
-            sh = _get_spreadsheet()
-            try: return sh.worksheet(tab)
-            except gspread.WorksheetNotFound:
-                return sh.add_worksheet(title=tab, rows=1000, cols=30)
+            sh, ws_dict = _get_sh_and_ws()
+            if tab in ws_dict:
+                return ws_dict[tab]
+            ws = sh.add_worksheet(title=tab, rows=1000, cols=30)
+            _get_sh_and_ws.clear()
+            return ws
         except gspread.exceptions.APIError as e:
             last_exc = e
             try: _status = e.response.status_code
             except: _status = 0
             if _status == 429:
-                break  # cuota agotada: no reintentar, no limpiar caché
-            _get_spreadsheet.clear()
+                break
+            _get_sh_and_ws.clear()
             if _attempt < 2:
                 _time.sleep(2 ** _attempt)
     raise RuntimeError(f"Error conectando con Google Sheets — {_api_error_msg(last_exc)}")
@@ -254,7 +263,8 @@ def delete_lead(lead_id):
 
 def _sheet_exists(name):
     try:
-        return name in {ws.title for ws in _get_spreadsheet().worksheets()}
+        _, ws_dict = _get_sh_and_ws()
+        return name in ws_dict
     except: return False
 
 def _ensure_sheet(name, cols):
