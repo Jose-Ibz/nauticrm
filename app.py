@@ -2026,22 +2026,28 @@ div.st-key-btn_gen_email button,
                         _cuerpo = _resto
                         break
 
+                import streamlit.components.v1 as _stc
                 st.markdown("**📧 Email generado:**")
                 if _asunto:
                     st.text_input("📩 Asunto:", value=_asunto, key="email_asunto_display")
                 st.text_area("Cuerpo:", value=_cuerpo, height=360, key="email_output_area")
 
-                # Botón copiar cuerpo con JavaScript
-                _cuerpo_esc = _html.escape(_cuerpo)
-                st.markdown(f"""
-<textarea id="_ecopy" style="position:fixed;left:-9999px;top:0;opacity:0">{_cuerpo_esc}</textarea>
-<button onclick="var t=document.getElementById('_ecopy');t.select();document.execCommand('copy');this.innerHTML='✅ &nbsp;¡Copiado!';setTimeout(()=>this.innerHTML='📋 &nbsp;Copiar cuerpo del email',2200)"
-    style="background:linear-gradient(135deg,#0077b6,#00b4d8);color:#fff;border:none;border-radius:6px;
-           padding:10px 18px;cursor:pointer;font-weight:700;width:100%;font-size:0.95rem;margin-top:4px">
+                # Botón copiar usando components.v1.html (iframe con acceso real al portapapeles)
+                _cuerpo_js = _cuerpo.replace('\\', '\\\\').replace('`', '\\`').replace('${', '\\${')
+                _stc.html(f"""
+<button id="copybtn"
+    onclick="navigator.clipboard.writeText(`{_cuerpo_js}`).then(()=>{{
+        this.innerHTML='✅ &nbsp;¡Copiado!';
+        setTimeout(()=>this.innerHTML='📋 &nbsp;Copiar cuerpo del email',2200);
+    }}).catch(()=>{{
+        this.innerHTML='⚠️ &nbsp;Error al copiar';
+    }})"
+    style="background:linear-gradient(135deg,#0077b6,#00b4d8);color:#fff;border:none;
+           border-radius:6px;padding:11px 18px;cursor:pointer;font-weight:700;
+           width:100%;font-size:0.95rem;font-family:sans-serif">
     📋 &nbsp;Copiar cuerpo del email
-</button>""", unsafe_allow_html=True)
+</button>""", height=52)
 
-                st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
                 if st.button("🗑️ Limpiar email", key="btn_clear_email"):
                     st.session_state["_email_generado"] = None
                     st.rerun()
