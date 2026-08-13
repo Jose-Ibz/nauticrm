@@ -87,6 +87,29 @@ BRAND_SITES = {
     "Fiart":       "fiart.it",
 }
 
+# Expansiones de abreviaciones por astillero (patrón regex → texto completo)
+BRAND_ABBREVIATIONS = {
+    "Beneteau": [
+        (r"\bGT\b",  "Gran Turismo"),
+        (r"\bST\b",  "Swift Trawler"),
+        (r"\bGS\b",  "Gran Sport"),
+        (r"\bFLY\b", "Flyer"),
+    ],
+    "Jeanneau": [
+        (r"\bSO\b",  "Sun Odyssey"),
+        (r"\bSF\b",  "Sun Fast"),
+        (r"\bNC\b",  "Velasco"),
+        (r"\bMO\b",  "Merry Fisher"),
+    ],
+    "Sasga": [
+        # "48" o "Sasga 48" → "Menorquin 48"
+        (r"^(?:Sasga\s+)?(\d+)", r"Menorquin \1"),
+    ],
+    "Quicksilver": [
+        (r"\bAC\b",  "Activ"),
+    ],
+}
+
 st.markdown('''
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600;700&display=swap');
@@ -471,9 +494,21 @@ def _detectar_marca(tipo_emb):
     # Si no hay marca conocida, devolver el texto completo como modelo sin marca
     return None, t
 
+def _expandir_abreviaturas(marca, modelo):
+    """Expande abreviaturas conocidas del modelo según el astillero.
+    Devuelve el modelo expandido (o el original si no hay expansión)."""
+    if not modelo: return modelo
+    expandido = modelo.strip()
+    for patron, reemplazo in BRAND_ABBREVIATIONS.get(marca, []):
+        nuevo = _re.sub(patron, reemplazo, expandido, flags=_re.IGNORECASE).strip()
+        if nuevo != expandido:
+            return nuevo
+    return expandido
+
 def _fetch_model_info(marca, modelo_eslora):
     """Busca info del modelo en la web oficial del astillero vía DuckDuckGo.
-    Intenta varias estrategias de búsqueda, de más específica a más amplia."""
+    Intenta varias estrategias de búsqueda, de más específica a más amplia,
+    incluyendo expansión de abreviaturas (GT→Gran Turismo, ST→Swift Trawler…)."""
     import requests as _rq
     site = BRAND_SITES.get(marca, "")
     if not site:
@@ -481,20 +516,32 @@ def _fetch_model_info(marca, modelo_eslora):
 
     hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120"}
 
-    # Palabras clave del modelo: ej. "Flyer 10" → ["Flyer 10", "Flyer"]
-    _palabras = modelo_eslora.split()
+    # Versión expandida del modelo (GT 40 → Gran Turismo 40, 48 → Menorquin 48…)
+    modelo_exp = _expandir_abreviaturas(marca, modelo_eslora)
+    _pal_orig = modelo_eslora.split()
+    _pal_exp  = modelo_exp.split()
+
     _queries_candidatos = []
     if modelo_eslora:
+        # 1. Marca + modelo expandido (mejor candidato)
+        if modelo_exp != modelo_eslora:
+            _queries_candidatos.append(f"{marca} {modelo_exp} site:{site}")
+            _queries_candidatos.append(f"{modelo_exp} site:{site}")
+        # 2. Marca + modelo original
         _queries_candidatos.append(f"{marca} {modelo_eslora} site:{site}")
         _queries_candidatos.append(f"{modelo_eslora} site:{site}")
-        if len(_palabras) > 1:
-            # Solo las dos primeras palabras
-            _queries_candidatos.append(f"{' '.join(_palabras[:2])} site:{site}")
-        # Solo la primera palabra (nombre base del modelo)
-        _queries_candidatos.append(f"{_palabras[0]} site:{site}")
-    # Sin restricción de site como último recurso
+        # 3. Primeras 3 palabras del modelo expandido (sin códigos internos al final)
+        if len(_pal_exp) > 2:
+            _queries_candidatos.append(f"{' '.join(_pal_exp[:3])} site:{site}")
+        # 4. Primeras 2 palabras
+        if len(_pal_exp) > 1:
+            _queries_candidatos.append(f"{' '.join(_pal_exp[:2])} site:{site}")
+        # 5. Solo primera palabra del modelo expandido
+        _queries_candidatos.append(f"{_pal_exp[0]} site:{site}")
+    # 6. Sin restricción de site como último recurso
     if modelo_eslora:
-        _queries_candidatos.append(f"{marca} {modelo_eslora}")
+        q_last = f"{marca} {modelo_exp}" if modelo_exp != modelo_eslora else f"{marca} {modelo_eslora}"
+        _queries_candidatos.append(q_last)
     # Eliminar duplicados manteniendo orden
     _seen_q = set()
     queries = [q for q in _queries_candidatos if not (q in _seen_q or _seen_q.add(q))]
@@ -1850,8 +1897,10 @@ elif "Lead" in page:
             # El modelo se toma directamente del campo modeloEslora
             _marca_det, _tipo_resto = _detectar_marca(existing.get("tipoEmbarcacion",""))
             _modelo_det = existing.get("modeloEslora","").strip() or _tipo_resto
+            _modelo_exp = _expandir_abreviaturas(_marca_det, _modelo_det) if _marca_det else _modelo_det
             if _marca_det:
-                st.info(f"🔍 Se buscará: **{_marca_det}** › **{_modelo_det}** en `{BRAND_SITES.get(_marca_det,'')}`")
+                _info_exp = f" → **{_modelo_exp}**" if _modelo_exp != _modelo_det else ""
+                st.info(f"🔍 Se buscará: **{_marca_det}** › **{_modelo_det}**{_info_exp} en `{BRAND_SITES.get(_marca_det,'')}`")
             else:
                 st.warning("⚠️ Marca no reconocida en el directorio — se generará email de presentación general.")
 
