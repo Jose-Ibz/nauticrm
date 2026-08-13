@@ -403,6 +403,32 @@ def save_config(vendedores, boat_types, sources, archivo=None, pasivos=None):
     if pasivos is not None:
         save_clientes_pasivos(pasivos)
 
+def _migrar_tipo_embarcacion(old_name, new_name):
+    """Sustituye old_name por new_name en tipoEmbarcacion en los tres sheets de datos."""
+    resultados = {}
+    for sheet_name, col_list, loader, cache_clear in [
+        ("Leads",           LEAD_COLS,  load_leads,           load_leads.clear),
+        ("ArchivoFrio",     ARCH_COLS,  load_archivo_frio,    load_archivo_frio.clear),
+        ("ClientesPasivos", PASIV_COLS, load_clientes_pasivos, load_clientes_pasivos.clear),
+    ]:
+        try:
+            lead_list = loader()
+            afectados = [l for l in lead_list if l.get("tipoEmbarcacion","") == old_name]
+            if not afectados:
+                resultados[sheet_name] = 0
+                continue
+            updated = [{**l, "tipoEmbarcacion": new_name} if l.get("tipoEmbarcacion","") == old_name else l
+                       for l in lead_list]
+            ws = get_sheet(sheet_name)
+            rows = [col_list] + [_serialize_lead_row(l, col_list) for l in updated]
+            ws.clear()
+            ws.update(rows, "A1")
+            cache_clear()
+            resultados[sheet_name] = len(afectados)
+        except Exception as _me:
+            resultados[sheet_name] = f"Error: {_me}"
+    return resultados
+
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
 def fmt_eur(n):
     try: return f"€{int(n):,}".replace(",",".")
@@ -2328,6 +2354,27 @@ elif "Config" in page:
                 if nueva.strip() and nueva.strip() not in boat_types:
                     _cfg_save(save_config, vendedores, boat_types+[nueva.strip()], sources, msg_ok=f"✅ '{nueva.strip()}' añadido.")
                 elif nueva.strip() in boat_types: st.warning("Ya existe.")
+        # ── Migración masiva de tipo ──────────────────────────────────────────
+        with st.expander("🔄 Renombrar tipo en toda la base de datos"):
+            st.caption("Cambia el tipo de embarcación en **todos los registros** (leads activos, archivo frío y clientes pasivos). Útil para consolidar duplicados como 'Beneteau Flyer' → 'Beneteau Motor'.")
+            _mc1, _mc2 = st.columns(2)
+            _mig_from = _mc1.selectbox("Tipo actual (a reemplazar)", boat_types, key="mig_from")
+            _mig_to   = _mc2.selectbox("Nuevo tipo", boat_types, key="mig_to")
+            if st.button("▶ Ejecutar migración", use_container_width=True, key="btn_mig"):
+                if _mig_from == _mig_to:
+                    st.warning("El tipo de origen y destino son el mismo.")
+                else:
+                    with st.spinner("Actualizando registros..."):
+                        _res = _migrar_tipo_embarcacion(_mig_from, _mig_to)
+                    _total = sum(v for v in _res.values() if isinstance(v, int))
+                    if _total == 0:
+                        st.info(f"No hay registros con tipo '{_mig_from}'.")
+                    else:
+                        _det = ", ".join(f"{s}: {n}" for s, n in _res.items() if isinstance(n, int) and n > 0)
+                        st.success(f"✅ {_total} registro(s) actualizados ({_det}).")
+                    _errs = {s: v for s, v in _res.items() if isinstance(v, str)}
+                    if _errs:
+                        st.error(f"Errores: {_errs}")
     with tab3:
         st.caption("Gestiona los valores del desplegable de fuente de lead.")
         st.markdown("<br>", unsafe_allow_html=True)
