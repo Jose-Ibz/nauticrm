@@ -161,7 +161,7 @@ LEAD_COLS = ["id","nombre","empresa","telefono","email","idioma","tipoEmbarcacio
 ARCH_COLS  = LEAD_COLS + ["fechaArchivo", "motivoArchivo"]
 PASIV_COLS = LEAD_COLS + ["fechaPasivo"]
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=180)
 def load_leads():
     ws = get_sheet("Leads")
     all_values = ws.get_all_values()
@@ -201,7 +201,7 @@ def load_leads():
         rows.append(lead)
     return rows
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=191)
 def load_config():
     ws = get_sheet("Config")
     all_values = ws.get_all_values()
@@ -268,12 +268,13 @@ def _sheet_exists(name):
     except: return False
 
 def _ensure_sheet(name, cols):
-    sp = _get_spreadsheet()
-    titles = {ws.title for ws in sp.worksheets()}
-    if name not in titles:
-        ws = sp.add_worksheet(title=name, rows=200, cols=len(cols)+2)
+    sh, ws_dict = _get_sh_and_ws()
+    if name not in ws_dict:
+        ws = sh.add_worksheet(title=name, rows=200, cols=len(cols)+2)
         ws.update([cols], "A1")
-    return get_sheet(name)
+        _get_sh_and_ws.clear()
+        return ws
+    return ws_dict[name]
 
 def _serialize_lead_row(l, col_list):
     import json as _js
@@ -315,7 +316,7 @@ def _deserialize_lead_rows(ws_rows, col_list):
         result.append(l)
     return result
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=203)
 def load_archivo_frio():
     try:
         if not _sheet_exists("ArchivoFrio"):
@@ -325,7 +326,7 @@ def load_archivo_frio():
         return _deserialize_lead_rows(ws.get_all_values(), ARCH_COLS)
     except: return []
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=217)
 def load_clientes_pasivos():
     try:
         if not _sheet_exists("ClientesPasivos"):
@@ -543,55 +544,68 @@ def _backup_name_today():
 def _list_backup_sheets():
     """Devuelve lista de hojas Bak_ (solo Leads) ordenadas de más reciente a más antigua."""
     try:
-        sp = _get_spreadsheet()
-        sheets = [ws for ws in sp.worksheets() if ws.title.startswith("Bak_") and not ws.title.startswith(("BakCfg_","BakArch_","BakPas_"))]
+        _, ws_dict = _get_sh_and_ws()
+        sheets = [ws for title, ws in ws_dict.items()
+                  if title.startswith("Bak_") and not title.startswith(("BakCfg_","BakArch_","BakPas_"))]
         return sorted(sheets, key=lambda x: x.title, reverse=True)
     except: return []
 
-def _backup_sheet(sp, src_name, bak_prefix, today_str, existing_titles):
+def _backup_sheet(sp, src_name, bak_prefix, today_str, existing_titles, ws_dict):
     """Crea copia de seguridad de una hoja si no existe ya para hoy."""
     bname = f"{bak_prefix}{today_str}"
     if bname in existing_titles: return
     if src_name not in existing_titles: return
-    src_ws = sp.worksheet(src_name)
+    src_ws = ws_dict.get(src_name)
+    if src_ws is None: return
     data = src_ws.get_all_values()
     nrows = max(len(data) + 10, 50)
     ncols = max(len(data[0]) if data else 5, 5)
     bak_ws = sp.add_worksheet(title=bname, rows=nrows, cols=ncols)
     if data: bak_ws.update(data, "A1")
+    existing_titles.add(bname)
 
 def _do_backup():
     """Crea la copia del día si no existe. Devuelve (creada:bool, msg:str)."""
     try:
         today_str = date.today().strftime('%Y%m%d')
         bname = f"Bak_{today_str}"
-        sp = _get_spreadsheet()
-        existing_titles = {ws.title for ws in sp.worksheets()}
+        sh, ws_dict = _get_sh_and_ws()
+        sp = sh
+        existing_titles = set(ws_dict.keys())
         if bname in existing_titles:
             return False, f"Ya existe copia de hoy ({bname})"
         # Leer datos actuales de Leads
-        leads_ws = get_sheet("Leads")
+        leads_ws = ws_dict.get("Leads") or get_sheet("Leads")
         all_data = leads_ws.get_all_values()
         nrows = max(len(all_data) + 10, 50)
         bak_ws = sp.add_worksheet(title=bname, rows=nrows, cols=len(LEAD_COLS)+2)
         if all_data:
             bak_ws.update(all_data, "A1")
-        # Backup de las demás hojas importantes
         existing_titles.add(bname)
-        _backup_sheet(sp, "Config", "BakCfg_", today_str, existing_titles)
-        _backup_sheet(sp, "ArchivoFrio", "BakArch_", today_str, existing_titles)
-        _backup_sheet(sp, "ClientesPasivos", "BakPas_", today_str, existing_titles)
-        # Purgar copias antiguas (Leads)
-        bak_sheets = sorted([ws for ws in sp.worksheets() if ws.title.startswith("Bak_") and not ws.title.startswith(("BakCfg_","BakArch_","BakPas_"))], key=lambda x: x.title)
-        while len(bak_sheets) > BACKUP_MAX:
-            sp.del_worksheet(bak_sheets[0])
-            bak_sheets = bak_sheets[1:]
-        # Purgar copias antiguas (Config, ArchivoFrio, ClientesPasivos)
+        # Backup de las demás hojas importantes (sin lecturas API adicionales)
+        _backup_sheet(sp, "Config", "BakCfg_", today_str, existing_titles, ws_dict)
+        _backup_sheet(sp, "ArchivoFrio", "BakArch_", today_str, existing_titles, ws_dict)
+        _backup_sheet(sp, "ClientesPasivos", "BakPas_", today_str, existing_titles, ws_dict)
+        # Purgar copias antiguas usando existing_titles en memoria (sin releer la API)
+        bak_titles = sorted([t for t in existing_titles
+                              if t.startswith("Bak_") and not t.startswith(("BakCfg_","BakArch_","BakPas_"))])
+        while len(bak_titles) > BACKUP_MAX:
+            old_title = bak_titles[0]
+            old_ws = ws_dict.get(old_title)
+            if old_ws:
+                sp.del_worksheet(old_ws)
+            bak_titles = bak_titles[1:]
+            existing_titles.discard(old_title)
         for prefix in ("BakCfg_","BakArch_","BakPas_"):
-            _aux = sorted([ws for ws in sp.worksheets() if ws.title.startswith(prefix)], key=lambda x: x.title)
+            _aux = sorted([t for t in existing_titles if t.startswith(prefix)])
             while len(_aux) > BACKUP_MAX:
-                sp.del_worksheet(_aux[0])
+                old_title = _aux[0]
+                old_ws = ws_dict.get(old_title)
+                if old_ws:
+                    sp.del_worksheet(old_ws)
                 _aux = _aux[1:]
+                existing_titles.discard(old_title)
+        _get_sh_and_ws.clear()  # invalidar caché — se crearon hojas nuevas
         return True, bname
     except Exception as e:
         return False, str(e)
@@ -599,12 +613,14 @@ def _do_backup():
 def _restore_backup(sheet_name):
     """Restaura la hoja Leads desde una copia de seguridad."""
     try:
-        sp = _get_spreadsheet()
-        bak_ws = sp.worksheet(sheet_name)
+        sh, ws_dict = _get_sh_and_ws()
+        bak_ws = ws_dict.get(sheet_name)
+        if bak_ws is None:
+            return False, f"Hoja '{sheet_name}' no encontrada en caché — recarga la página e inténtalo."
         all_data = bak_ws.get_all_values()
         if not all_data:
             return False, "La copia está vacía."
-        leads_ws = get_sheet("Leads")
+        leads_ws = ws_dict.get("Leads") or get_sheet("Leads")
         leads_ws.clear()
         leads_ws.update(all_data, "A1")
         load_leads.clear()
@@ -616,8 +632,9 @@ def _backup_to_json(sheet_name):
     """Exporta una copia de seguridad como JSON."""
     import json as _jbak
     try:
-        sp = _get_spreadsheet()
-        bak_ws = sp.worksheet(sheet_name)
+        _, ws_dict = _get_sh_and_ws()
+        bak_ws = ws_dict.get(sheet_name)
+        if bak_ws is None: return None
         rows = bak_ws.get_all_values()
         if not rows: return None
         headers, data = rows[0], rows[1:]
@@ -739,8 +756,13 @@ try:
     archivo_frio = load_archivo_frio()
     clientes_pasivos = load_clientes_pasivos()
 except Exception as e:
-    st.error(f"❌ Error conectando con Google Sheets: {e}")
-    st.info("Comprueba que los Secrets están bien configurados en Streamlit Cloud.")
+    _emsg = str(e)
+    if "429" in _emsg:
+        st.warning("⏳ Google Sheets está temporalmente saturado (cuota de lecturas excedida). Espera 30–60 segundos y recarga la página.")
+        st.caption("No es un problema de configuración — la cuota se libera automáticamente.")
+    else:
+        st.error(f"❌ Error conectando con Google Sheets: {e}")
+        st.info("Comprueba que los Secrets están bien configurados en Streamlit Cloud.")
     st.stop()
 
 # Auto-archivar
