@@ -1006,7 +1006,7 @@ if MODO_FERIA:
 # ══ SIDEBAR ═══════════════════════════════════════════════════════════════════
 with st.sidebar:
     try:
-        st.image("LOGO-viamar - bueno.jpg", use_container_width=True)
+        st.image("logo_sun.jpg", use_container_width=True)
     except:
         pass
     st.markdown("## ⚓ NautiCRM")
@@ -1608,7 +1608,7 @@ Sé directo, usa datos concretos del informe y enfócate en lo accionable. Forma
                         _s_h2=ParagraphStyle("h2",fontName="Helvetica-Bold",fontSize=11,textColor=_BLUE,spaceBefore=10,spaceAfter=4)
                         _s_body=ParagraphStyle("b",fontName="Helvetica",fontSize=10,textColor=_DARK,spaceAfter=4,leading=14)
                         _s_bull=ParagraphStyle("bl",fontName="Helvetica",fontSize=10,textColor=_DARK,spaceAfter=3,leftIndent=14,leading=13)
-                        _logo_path=_os.path.join(_os.path.dirname(_os.path.abspath(__file__)),"logo_viamar.jpg")
+                        _logo_path=_os.path.join(_os.path.dirname(_os.path.abspath(__file__)),"logo_sun.jpg")
                         _elems=[]
                         if _os.path.exists(_logo_path):
                             try:
@@ -2185,7 +2185,7 @@ div.st-key-btn_gen_email button,
     <div class='sub'>{l.get('empresa','') or '—'} &nbsp;·&nbsp; {l.get('telefono','') or '—'} &nbsp;·&nbsp; {l.get('email','') or '—'}</div>
     <span class='badge'>{l.get('etapa','')}</span>
   </div>
-  <img class='logo' src='https://raw.githubusercontent.com/Jose-Ibz/nauticrm/main/logo_viamar.jpg' onerror="this.style.display='none'">
+  <img class='logo' src='https://raw.githubusercontent.com/Jose-Ibz/nauticrm/main/logo_sun.jpg' onerror="this.style.display='none'">
 </div>
 <div class='section-title'>Datos comerciales</div>
 <div class='grid'>
