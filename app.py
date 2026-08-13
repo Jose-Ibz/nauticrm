@@ -110,6 +110,17 @@ BRAND_ABBREVIATIONS = {
     ],
 }
 
+# Para marcas con catálogo pequeño y URLs predecibles: slug directo por modelo
+# Clave: (marca, número/nombre normalizado) → URL
+BRAND_DIRECT_URLS = {
+    ("Sasga", "34"): "https://sasgayachts.com/en/menorquin-34/",
+    ("Sasga", "37"): "https://sasgayachts.com/en/menorquin-37/",
+    ("Sasga", "42"): "https://sasgayachts.com/en/menorquin-42/",
+    ("Sasga", "48"): "https://sasgayachts.com/en/menorquin-48/",
+    ("Sasga", "54"): "https://sasgayachts.com/en/menorquin-54/",
+    ("Sasga", "110"): "https://sasgayachts.com/en/menorquin-110/",
+}
+
 st.markdown('''
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600;700&display=swap');
@@ -518,6 +529,51 @@ def _fetch_model_info(marca, modelo_eslora):
 
     # Versión expandida del modelo (GT 40 → Gran Turismo 40, 48 → Menorquin 48…)
     modelo_exp = _expandir_abreviaturas(marca, modelo_eslora)
+
+    # Intentar URL directa para marcas con catálogo pequeño (Sasga etc.)
+    _num_modelo = _re.search(r'\d+', modelo_eslora or "")
+    if _num_modelo:
+        _direct_url = BRAND_DIRECT_URLS.get((marca, _num_modelo.group()))
+        if _direct_url:
+            try:
+                _dr = _rq.get(_direct_url, headers=hdrs, timeout=12)
+                _dr.encoding = "utf-8"
+                if _dr.status_code == 200 and len(_dr.text) > 500:
+                    import json as _jxd
+                    def _extr_d(obj, _c=[0]):
+                        if _c[0] > 80: return []
+                        txts = []
+                        if isinstance(obj, str):
+                            s = obj.strip()
+                            if (len(s) >= 35 and not s.startswith(('http','www','//','data:','{','['))
+                                    and '://' not in s and not _re.match(r'^[a-zA-Z0-9_\-\.]+$', s)):
+                                txts.append(s); _c[0] += 1
+                        elif isinstance(obj, dict):
+                            for k in ['description','name','title','text','content','features','specifications']:
+                                if k in obj: txts.extend(_extr_d(obj[k], _c))
+                            for k, v in obj.items():
+                                if k not in ['description','name','title','text','content','features','specifications']:
+                                    txts.extend(_extr_d(v, _c))
+                        elif isinstance(obj, list):
+                            for item in obj[:30]: txts.extend(_extr_d(item, _c))
+                        return txts
+                    _extra_d = []
+                    for _pd in (
+                        r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+                        r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+                    ):
+                        for _md in _re.findall(_pd, _dr.text, _re.DOTALL|_re.IGNORECASE):
+                            try:
+                                _dd = _jxd.loads(_md)
+                                _td = _extr_d(_dd)
+                                if _td: _extra_d.append(' | '.join(_td))
+                            except: pass
+                    _txt_d = _limpiar_html(_dr.text)
+                    _combined_d = (_txt_d + " " + " ".join(_extra_d)).strip()
+                    if len(_combined_d) > 200:
+                        return _combined_d[:4000], _direct_url, None
+            except Exception:
+                pass  # si falla la URL directa, continuar con DuckDuckGo
     _pal_orig = modelo_eslora.split()
     _pal_exp  = modelo_exp.split()
 
@@ -674,17 +730,22 @@ def _generar_email(lead, info_web, url_modelo, indicaciones=""):
 
     indicaciones_block = ""
     if indicaciones:
-        indicaciones_block = f"\n\nSPECIAL INSTRUCTIONS FROM THE SALES TEAM (follow these carefully, they take priority):\n{indicaciones}"
+        indicaciones_block = (
+            f"\n\n--- MANDATORY INSTRUCTIONS FROM SALES TEAM (highest priority — "
+            f"these MUST be reflected in the email body, do not skip any) ---\n"
+            f"{indicaciones}\n"
+            f"--- END OF MANDATORY INSTRUCTIONS ---"
+        )
 
     prompt = f"""You are the sales team of Supermercado Náutico, official distributors for Ibiza and Formentera.
-
+{indicaciones_block}
 Write a commercial follow-up email in {idioma_en} for this client:
 - Nombre: {nombre}
 - Interés: {tipo} {modelo}
 - Presupuesto aprox: {"€{:,}".format(pres) if pres else "No indicado"}
 - Notas internas (NO mencionar textualmente): {notas}
 - Etapa comercial: {etapa}
-{info_block}{aviso_web}{indicaciones_block}
+{info_block}{aviso_web}
 
 INSTRUCTIONS (follow strictly):
 - Write the ENTIRE email in {idioma_en} — this is mandatory, do not use any other language
