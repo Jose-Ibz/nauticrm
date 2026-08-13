@@ -629,18 +629,23 @@ INSTRUCCIONES:
 - Agradece su interés/visita de forma natural y cálida
 - Preséntanos como distribuidores exclusivos para Ibiza y Formentera{"de " + tipo.split()[0] if tipo else ""}
 {"- Destaca 2-3 puntos clave del modelo basándote en la info de la web (sin inventar datos)" if info_web else "- Email de presentación general: quiénes somos, cómo podemos ayudar, disposición total"}
-- Invita a visitar el showroom o agendar una llamada
+- Invita al cliente a visitarnos o a agendar una llamada/reunión para aclarar lo que considere oportuno — NO menciones "showroom"
 - Trato de USTED siempre, es un cliente nuevo que no conocemos — nunca tutees
 - Tono profesional pero cercano, sin ser demasiado comercial
 - Añade asunto del email en la primera línea: "Asunto: ..."
-- Firma: Equipo Supermercado Náutico — Distribuidores Ibiza & Formentera"""
+- Firma: Equipo Supermercado Náutico — Distribuidores Ibiza & Formentera
+- IMPORTANTE: escribe en texto plano sin ningún formato markdown. No uses asteriscos, almohadillas ni ningún marcador de formato."""
 
     resp = _ac.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1800,
         messages=[{"role":"user","content":prompt}]
     )
-    return resp.content[0].text
+    texto = resp.content[0].text
+    # Eliminar cualquier marcador markdown residual
+    texto = _re.sub(r'\*{1,3}', '', texto)
+    texto = _re.sub(r'#{1,6}\s*', '', texto)
+    return texto.strip()
 
 # ─── BACKUP ───────────────────────────────────────────────────────────────────
 BACKUP_MAX = 30  # máximo de copias a conservar
