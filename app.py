@@ -644,7 +644,7 @@ def _fetch_model_info(marca, modelo_eslora):
 
     return None, None, f"No se encontró la página de '{modelo_eslora}' en {site}."
 
-def _generar_email(lead, info_web, url_modelo):
+def _generar_email(lead, info_web, url_modelo, indicaciones=""):
     """Genera email de seguimiento con Claude. info_web puede ser None."""
     import anthropic as _ant
     _ac = _ant.Anthropic(api_key=st.secrets["anthropic_api_key"])
@@ -672,6 +672,10 @@ def _generar_email(lead, info_web, url_modelo):
     else:
         aviso_web = "\n⚠️ No se encontró información específica del modelo en la web del astillero. Genera un email de presentación general."
 
+    indicaciones_block = ""
+    if indicaciones:
+        indicaciones_block = f"\n\nSPECIAL INSTRUCTIONS FROM THE SALES TEAM (follow these carefully, they take priority):\n{indicaciones}"
+
     prompt = f"""You are the sales team of Supermercado Náutico, official distributors for Ibiza and Formentera.
 
 Write a commercial follow-up email in {idioma_en} for this client:
@@ -680,7 +684,7 @@ Write a commercial follow-up email in {idioma_en} for this client:
 - Presupuesto aprox: {"€{:,}".format(pres) if pres else "No indicado"}
 - Notas internas (NO mencionar textualmente): {notas}
 - Etapa comercial: {etapa}
-{info_block}{aviso_web}
+{info_block}{aviso_web}{indicaciones_block}
 
 INSTRUCTIONS (follow strictly):
 - Write the ENTIRE email in {idioma_en} — this is mandatory, do not use any other language
@@ -1992,6 +1996,18 @@ elif "Lead" in page:
                 placeholder="https://www.beneteau.com/es/gran-turismo-nuevo/gran-turismo-40"
             )
 
+            _indicaciones_email = st.text_area(
+                "💬 Indicaciones para el email (opcional):",
+                value="",
+                height=90,
+                key=f"indicaciones_email_{existing.get('id','')}",
+                placeholder=(
+                    "Ej: El cliente viene del Salón Náutico de Barcelona. "
+                    "Es el segundo contacto, ya visitó las instalaciones. "
+                    "Hacer hincapié en el plazo de entrega y las opciones de financiación."
+                )
+            )
+
             _idioma_email = existing.get("idioma","Español")
             st.caption(f"Idioma del email: **{_idioma_email}** (según ficha del cliente)")
 
@@ -2070,7 +2086,7 @@ div.st-key-btn_gen_email button,
                             st.warning(f"⚠️ {_err_w} — Se generará email general sin info del modelo.")
                         elif _url_w:
                             st.success(f"✅ Info encontrada en: {_url_w}")
-                    _email_txt = _generar_email(existing, _info_w, _url_w)
+                    _email_txt = _generar_email(existing, _info_w, _url_w, _indicaciones_email.strip())
                     st.session_state["_email_generado"] = _email_txt
 
             if st.session_state.get("_email_generado"):
