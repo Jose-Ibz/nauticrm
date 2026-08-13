@@ -504,6 +504,7 @@ INSTRUCCIONES:
 - Preséntanos como distribuidores exclusivos para Ibiza y Formentera{"de " + tipo.split()[0] if tipo else ""}
 {"- Destaca 2-3 puntos clave del modelo basándote en la info de la web (sin inventar datos)" if info_web else "- Email de presentación general: quiénes somos, cómo podemos ayudar, disposición total"}
 - Invita a visitar el showroom o agendar una llamada
+- Trato de USTED siempre, es un cliente nuevo que no conocemos — nunca tutees
 - Tono profesional pero cercano, sin ser demasiado comercial
 - Añade asunto del email en la primera línea: "Asunto: ..."
 - Firma: Equipo Náutica Viamar — Distribuidores Ibiza & Formentera"""
@@ -2247,27 +2248,41 @@ elif "Config" in page:
             if st.form_submit_button("💾 Guardar nombres"):
                 save_config(names,boat_types,sources); st.success("✅ Actualizado."); st.rerun()
     with tab2:
-        st.caption("Gestiona los valores del desplegable de embarcación.")
+        st.caption("Gestiona los valores del desplegable de embarcación. Puedes añadir, renombrar o eliminar entradas.")
         st.markdown("<br>", unsafe_allow_html=True)
-        cols_bt=st.columns(4); to_delete=None
-        for i,bt in enumerate(boat_types):
-            with cols_bt[i%4]:
-                c1,c2=st.columns([3,1])
-                c1.markdown(f"<div style='background:#0d1e35;border:1px solid #1a3050;border-radius:6px;padding:5px 10px;font-size:0.82rem;color:#e8e0d0'>{bt}</div>", unsafe_allow_html=True)
-                if c2.button("✕",key=f"del_{i}"): to_delete=bt
-        if to_delete:
-            new_bt=[x for x in boat_types if x!=to_delete]
-            save_config(vendedores,new_bt,sources); st.rerun()
+        _editando_bt = st.session_state.get("_edit_bt_idx", None)
+        to_delete_bt = None; bt_rename_from = None; bt_rename_to = None
+        for i, bt in enumerate(boat_types):
+            c1, c2, c3 = st.columns([4, 1, 1])
+            if _editando_bt == i:
+                nuevo_nombre = c1.text_input("", value=bt, key=f"rename_val_{i}", label_visibility="collapsed")
+                if c2.button("✓", key=f"ok_{i}", help="Guardar nombre"):
+                    if nuevo_nombre.strip() and nuevo_nombre.strip() != bt:
+                        bt_rename_from = bt; bt_rename_to = nuevo_nombre.strip()
+                    st.session_state["_edit_bt_idx"] = None
+                if c3.button("✕", key=f"cancel_{i}", help="Cancelar"):
+                    st.session_state["_edit_bt_idx"] = None; st.rerun()
+            else:
+                c1.markdown(f"<div style='background:#0d1e35;border:1px solid #1a3050;border-radius:6px;padding:6px 12px;font-size:0.84rem;color:#e8e0d0'>{_html.escape(bt)}</div>", unsafe_allow_html=True)
+                if c2.button("✏️", key=f"edit_{i}", help="Renombrar"):
+                    st.session_state["_edit_bt_idx"] = i; st.rerun()
+                if c3.button("✕", key=f"del_{i}", help="Eliminar"):
+                    to_delete_bt = bt
+        if bt_rename_from and bt_rename_to:
+            new_bt = [bt_rename_to if x == bt_rename_from else x for x in boat_types]
+            save_config(vendedores, new_bt, sources); st.rerun()
+        if to_delete_bt:
+            save_config(vendedores, [x for x in boat_types if x != to_delete_bt], sources); st.rerun()
         st.markdown("<br>", unsafe_allow_html=True)
         with st.form("cfg_b"):
-            c1,c2=st.columns([3,1])
-            nueva=c1.text_input("Nueva marca/tipo",placeholder="Ej: Hallberg-Rassy, Dufour...",label_visibility="collapsed")
+            c1, c2 = st.columns([3, 1])
+            nueva = c1.text_input("Nueva marca/tipo", placeholder="Ej: Beneteau Motor, Lasai 36...", label_visibility="collapsed")
             if c2.form_submit_button("➕ Añadir"):
                 if nueva.strip() and nueva.strip() not in boat_types:
-                    save_config(vendedores,boat_types+[nueva.strip()],sources); st.success(f"✅ '{nueva.strip()}' añadido."); st.rerun()
+                    save_config(vendedores, boat_types+[nueva.strip()], sources); st.success(f"✅ '{nueva.strip()}' añadido."); st.rerun()
                 elif nueva.strip() in boat_types: st.warning("Ya existe.")
         if st.button("↺ Restaurar por defecto"):
-            save_config(vendedores,["Velero","Motor","Catamarán","Zodiac","Charter","Jeanneau","Beneteau","Sunseeker","Princess","Azimut","Ferretti","Bavaria","Hanse","Lagoon","Otro"],sources); st.rerun()
+            save_config(vendedores, ["Beneteau Motor","Beneteau Vela","Sasga","Lasai","Karnic","Wellcraft","Jeanneau","Sunseeker","Princess","Azimut","Catamarán","Zodiac","Otro"], sources); st.rerun()
     with tab3:
         st.caption("Gestiona los valores del desplegable de fuente de lead.")
         st.markdown("<br>", unsafe_allow_html=True)
