@@ -585,10 +585,39 @@ def _fetch_model_info(marca, modelo_eslora):
             pr.encoding = "utf-8"
             raw_html = pr.text
 
-            # Intentar extraer datos estructurados antes de limpiar el HTML
-            # (webs SPA como Beneteau/Jeanneau usan Next.js — el HTML visible está vacío
-            #  pero los datos reales van en __NEXT_DATA__ o JSON-LD)
+            # Extraer datos estructurados (webs SPA tipo Next.js tienen HTML vacío
+            # pero datos reales en __NEXT_DATA__ o JSON-LD)
             import json as _jx
+
+            def _extraer_texto_json_util(obj, min_len=35, _count=[0]):
+                """Extrae strings legibles de JSON anidado, descartando URLs y claves."""
+                if _count[0] > 80:
+                    return []
+                texts = []
+                if isinstance(obj, str):
+                    s = obj.strip()
+                    if (len(s) >= min_len
+                            and not s.startswith(('http', 'www', '//', 'data:', '{', '['))
+                            and '://' not in s
+                            and not _re.match(r'^[a-zA-Z0-9_\-\.]+$', s)):
+                        texts.append(s)
+                        _count[0] += 1
+                elif isinstance(obj, dict):
+                    # Priorizar claves que suelen contener descripciones de producto
+                    priority = ['description','name','title','text','content',
+                                'body','summary','features','specifications',
+                                'details','label','caption','headline']
+                    for k in priority:
+                        if k in obj:
+                            texts.extend(_extraer_texto_json_util(obj[k], min_len, _count))
+                    for k, v in obj.items():
+                        if k not in priority:
+                            texts.extend(_extraer_texto_json_util(v, min_len, _count))
+                elif isinstance(obj, list):
+                    for item in obj[:30]:
+                        texts.extend(_extraer_texto_json_util(item, min_len, _count))
+                return texts
+
             _extra_text = []
             for _pat in (
                 r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
@@ -598,7 +627,9 @@ def _fetch_model_info(marca, modelo_eslora):
                 for _m in _re.findall(_pat, raw_html, _re.DOTALL|_re.IGNORECASE):
                     try:
                         _d = _jx.loads(_m)
-                        _extra_text.append(_jx.dumps(_d, ensure_ascii=False)[:2000])
+                        _texts = _extraer_texto_json_util(_d)
+                        if _texts:
+                            _extra_text.append(' | '.join(_texts))
                     except Exception:
                         pass
 
@@ -1988,14 +2019,36 @@ div.st-key-btn_gen_email button,
                             _pr2 = _rq2.get(_url_dir, headers=_hdrs2, timeout=12)
                             _pr2.encoding = "utf-8"
                             _raw2 = _pr2.text
-                            # Extraer datos estructurados (Next.js / JSON-LD)
+
+                            def _extr_json_text(obj, _c=[0]):
+                                if _c[0] > 80: return []
+                                txts = []
+                                if isinstance(obj, str):
+                                    s = obj.strip()
+                                    if (len(s) >= 35 and not s.startswith(('http','www','//','data:','{','['))
+                                            and '://' not in s and not _re.match(r'^[a-zA-Z0-9_\-\.]+$', s)):
+                                        txts.append(s); _c[0] += 1
+                                elif isinstance(obj, dict):
+                                    prio = ['description','name','title','text','content','body',
+                                            'summary','features','specifications','details','label']
+                                    for k in prio:
+                                        if k in obj: txts.extend(_extr_json_text(obj[k], _c))
+                                    for k, v in obj.items():
+                                        if k not in prio: txts.extend(_extr_json_text(v, _c))
+                                elif isinstance(obj, list):
+                                    for item in obj[:30]: txts.extend(_extr_json_text(item, _c))
+                                return txts
+
                             _extra2 = []
                             for _pat2 in (
                                 r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
                                 r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
                             ):
                                 for _m2 in _re.findall(_pat2, _raw2, _re.DOTALL|_re.IGNORECASE):
-                                    try: _extra2.append(_jx2.dumps(_jx2.loads(_m2), ensure_ascii=False)[:2000])
+                                    try:
+                                        _d2 = _jx2.loads(_m2)
+                                        _t2 = _extr_json_text(_d2)
+                                        if _t2: _extra2.append(' | '.join(_t2))
                                     except: pass
                             for _tag2 in ("script","style","nav","footer","header","noscript"):
                                 _raw2 = _re.sub(rf"<{_tag2}[^>]*>.*?</{_tag2}>", " ", _raw2, flags=_re.DOTALL|_re.IGNORECASE)
@@ -2003,6 +2056,11 @@ div.st-key-btn_gen_email button,
                             _txt2 = _re.sub(r"\s+", " ", _txt2).strip()
                             _combined2 = (_txt2 + " " + " ".join(_extra2)).strip()
                             _info_w, _url_w = _combined2[:4000], _url_dir
+                            # Mostrar preview de lo extraído para verificar
+                            _preview = _combined2[:300].strip()
+                            if _preview:
+                                with st.expander("🔍 Vista previa del contenido extraído", expanded=False):
+                                    st.caption(_preview + ("…" if len(_combined2) > 300 else ""))
                             st.success(f"✅ Contenido obtenido de: {_url_dir}")
                         except Exception as _eu:
                             st.warning(f"⚠️ No se pudo acceder a la URL: {_eu} — Se generará email general.")
@@ -2032,16 +2090,25 @@ div.st-key-btn_gen_email button,
                     st.text_input("📩 Asunto:", value=_asunto, key="email_asunto_display")
                 st.text_area("Cuerpo:", value=_cuerpo, height=360, key="email_output_area")
 
-                # Botón copiar usando components.v1.html (iframe con acceso real al portapapeles)
-                _cuerpo_js = _cuerpo.replace('\\', '\\\\').replace('`', '\\`').replace('${', '\\${')
+                # Botón copiar — lee el valor actual del textarea (incluso si fue editado)
+                # Fallback: texto original generado
+                _cuerpo_fallback = st.session_state.get("email_output_area", _cuerpo)
+                _cuerpo_js = _cuerpo_fallback.replace('\\', '\\\\').replace('`', '\\`').replace('${', '\\${')
                 _stc.html(f"""
 <button id="copybtn"
-    onclick="navigator.clipboard.writeText(`{_cuerpo_js}`).then(()=>{{
-        this.innerHTML='✅ &nbsp;¡Copiado!';
-        setTimeout(()=>this.innerHTML='📋 &nbsp;Copiar cuerpo del email',2200);
-    }}).catch(()=>{{
-        this.innerHTML='⚠️ &nbsp;Error al copiar';
-    }})"
+    onclick="(function(){{
+        var txt = `{_cuerpo_js}`;
+        try {{
+            var el = window.parent.document.querySelector('[class*=\\"email_output_area\\"] textarea');
+            if (el && el.value) {{ txt = el.value; }}
+        }} catch(e) {{}}
+        navigator.clipboard.writeText(txt).then(function(){{
+            document.getElementById('copybtn').innerHTML='✅ &nbsp;¡Copiado!';
+            setTimeout(function(){{document.getElementById('copybtn').innerHTML='📋 &nbsp;Copiar cuerpo del email';}},2200);
+        }}).catch(function(){{
+            document.getElementById('copybtn').innerHTML='⚠️ &nbsp;Error al copiar';
+        }});
+    }})()"
     style="background:linear-gradient(135deg,#0077b6,#00b4d8);color:#fff;border:none;
            border-radius:6px;padding:11px 18px;cursor:pointer;font-weight:700;
            width:100%;font-size:0.95rem;font-family:sans-serif">
