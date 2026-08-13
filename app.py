@@ -472,46 +472,70 @@ def _detectar_marca(tipo_emb):
     return None, t
 
 def _fetch_model_info(marca, modelo_eslora):
-    """Busca info del modelo en la web oficial del astillero vía DuckDuckGo."""
+    """Busca info del modelo en la web oficial del astillero vía DuckDuckGo.
+    Intenta varias estrategias de búsqueda, de más específica a más amplia."""
     import requests as _rq
     site = BRAND_SITES.get(marca, "")
     if not site:
         return None, None, f"Astillero '{marca}' no está en el directorio de webs."
 
-    # Componer búsqueda: marca + modelo en la web oficial
-    query = f"{marca} {modelo_eslora} site:{site}"
-    hdrs  = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120"}
-    try:
-        sr = _rq.get(
-            f"https://html.duckduckgo.com/html/?q={_urlparse.quote(query)}",
-            headers=hdrs, timeout=12
-        )
-        # Extraer primera URL del dominio oficial
-        urls = _re.findall(
-            r'href="(https?://(?:www\.)?' + _re.escape(site) + r'[^"&]*)"',
-            sr.text
-        )
-        # Filtrar redirecciones de DuckDuckGo
-        urls = [u for u in urls if site in u and "duckduckgo" not in u]
-        if not urls:
-            return None, None, f"No se encontró la página de '{modelo_eslora}' en {site}."
+    hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120"}
 
-        page_url = urls[0]
-        pr = _rq.get(page_url, headers=hdrs, timeout=12)
-        pr.encoding = "utf-8"
-        raw = pr.text
+    # Palabras clave del modelo: ej. "Flyer 10" → ["Flyer 10", "Flyer"]
+    _palabras = modelo_eslora.split()
+    _queries_candidatos = []
+    if modelo_eslora:
+        _queries_candidatos.append(f"{marca} {modelo_eslora} site:{site}")
+        _queries_candidatos.append(f"{modelo_eslora} site:{site}")
+        if len(_palabras) > 1:
+            # Solo las dos primeras palabras
+            _queries_candidatos.append(f"{' '.join(_palabras[:2])} site:{site}")
+        # Solo la primera palabra (nombre base del modelo)
+        _queries_candidatos.append(f"{_palabras[0]} site:{site}")
+    # Sin restricción de site como último recurso
+    if modelo_eslora:
+        _queries_candidatos.append(f"{marca} {modelo_eslora}")
+    # Eliminar duplicados manteniendo orden
+    _seen_q = set()
+    queries = [q for q in _queries_candidatos if not (q in _seen_q or _seen_q.add(q))]
 
-        # Limpiar HTML: eliminar scripts, estilos, nav, footer
+    def _limpiar_html(raw):
         for tag in ("script","style","nav","footer","header","noscript"):
             raw = _re.sub(rf"<{tag}[^>]*>.*?</{tag}>", " ", raw, flags=_re.DOTALL|_re.IGNORECASE)
         text = _re.sub(r"<[^>]+>", " ", raw)
-        text = _re.sub(r"\s+", " ", text).strip()
+        return _re.sub(r"\s+", " ", text).strip()
 
-        # Quedarnos con los primeros 3.500 caracteres útiles
-        return text[:3500], page_url, None
+    for query in queries:
+        try:
+            sr = _rq.get(
+                f"https://html.duckduckgo.com/html/?q={_urlparse.quote(query)}",
+                headers=hdrs, timeout=12
+            )
+            # Buscar URLs del dominio oficial
+            urls = _re.findall(
+                r'href="(https?://(?:www\.)?' + _re.escape(site) + r'[^"&]*)"',
+                sr.text
+            )
+            urls = [u for u in urls if site in u and "duckduckgo" not in u]
+            if not urls:
+                # Último recurso sin site: aceptar cualquier URL del resultado
+                if "site:" not in query:
+                    all_urls = _re.findall(r'href="(https?://[^"&]+)"', sr.text)
+                    urls = [u for u in all_urls if "duckduckgo" not in u and marca.lower() in u.lower()]
+            if not urls:
+                continue
 
-    except Exception as e:
-        return None, None, str(e)
+            page_url = urls[0]
+            pr = _rq.get(page_url, headers=hdrs, timeout=12)
+            pr.encoding = "utf-8"
+            text = _limpiar_html(pr.text)
+            if len(text) < 200:
+                continue  # página vacía o redirigida, probar siguiente
+            return text[:3500], page_url, None
+        except Exception:
+            continue
+
+    return None, None, f"No se encontró la página de '{modelo_eslora}' en {site}."
 
 def _generar_email(lead, info_web, url_modelo):
     """Genera email de seguimiento con Claude. info_web puede ser None."""
@@ -1822,9 +1846,10 @@ elif "Lead" in page:
         # ── Generador de email ────────────────────────────────────────────────
         st.markdown("---")
         with st.expander("✉️ Generar email de seguimiento con IA"):
-            _marca_det, _modelo_det = _detectar_marca(
-                (existing.get("tipoEmbarcacion","") + " " + existing.get("modeloEslora","")).strip()
-            )
+            # La marca se detecta del catálogo (tipoEmbarcacion)
+            # El modelo se toma directamente del campo modeloEslora
+            _marca_det, _tipo_resto = _detectar_marca(existing.get("tipoEmbarcacion",""))
+            _modelo_det = existing.get("modeloEslora","").strip() or _tipo_resto
             if _marca_det:
                 st.info(f"🔍 Se buscará: **{_marca_det}** › **{_modelo_det}** en `{BRAND_SITES.get(_marca_det,'')}`")
             else:
