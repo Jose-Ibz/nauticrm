@@ -12,7 +12,7 @@ params = st.query_params
 MODO_FERIA = params.get("modo") == "feria"
 
 st.set_page_config(
-    page_title="Náutica Viamar Feria" if MODO_FERIA else "Náutica Viamar — NautiCRM",
+    page_title="Supermercado Náutico Feria" if MODO_FERIA else "Supermercado Náutico — NautiCRM",
     page_icon="⚓",
     layout="centered" if MODO_FERIA else "wide",
     initial_sidebar_state="collapsed" if MODO_FERIA else "expanded"
@@ -557,7 +557,7 @@ def _generar_email(lead, info_web, url_modelo):
     else:
         aviso_web = "\n⚠️ No se encontró información específica del modelo en la web del astillero. Genera un email de presentación general."
 
-    prompt = f"""Eres el equipo comercial de Náutica Viamar, distribuidores oficiales para Ibiza y Formentera.
+    prompt = f"""Eres el equipo comercial de Supermercado Náutico, distribuidores oficiales para Ibiza y Formentera.
 
 Genera un email comercial en {idioma} para este cliente:
 - Nombre: {nombre}
@@ -576,7 +576,7 @@ INSTRUCCIONES:
 - Trato de USTED siempre, es un cliente nuevo que no conocemos — nunca tutees
 - Tono profesional pero cercano, sin ser demasiado comercial
 - Añade asunto del email en la primera línea: "Asunto: ..."
-- Firma: Equipo Náutica Viamar — Distribuidores Ibiza & Formentera"""
+- Firma: Equipo Supermercado Náutico — Distribuidores Ibiza & Formentera"""
 
     resp = _ac.messages.create(
         model="claude-haiku-4-5-20251001",
@@ -719,7 +719,7 @@ def _backup_to_github(all_leads, archivo, pasivos):
     try:
         export = {
             "fecha": str(date.today()),
-            "generado_por": "NautiCRM - Náutica Viamar",
+            "generado_por": "NautiCRM - Supermercado Náutico",
             "leads_activos":    all_leads,
             "archivo_frio":     archivo,
             "clientes_pasivos": pasivos,
@@ -890,7 +890,7 @@ with st.sidebar:
     except:
         pass
     st.markdown("## ⚓ NautiCRM")
-    st.markdown("*Náutica Viamar*")
+    st.markdown("*Supermercado Náutico*")
     st.markdown("---")
     active_user  = st.selectbox("👤 Usuario activo", vendedores)
     my_portfolio = st.checkbox("📂 Ver solo mi cartera")
@@ -1350,7 +1350,7 @@ elif "Informes" in page:
                 for l in _arch_ia[:25]
             ]
 
-            _prompt=f"""Eres un consultor experto en ventas náuticas analizando los datos del CRM de Náutica Viamar, una empresa especializada en embarcaciones de recreo.
+            _prompt=f"""Eres un consultor experto en ventas náuticas analizando los datos del CRM de Supermercado Náutico, una empresa especializada en embarcaciones de recreo.
 
 PERÍODO ANALIZADO: {"Todo el histórico" if not _d_ini else f"{_d_ini} a {_d_fin}"}
 
@@ -1596,7 +1596,7 @@ Sé directo, usa datos concretos del informe y enfócate en lo accionable. Forma
   @media print{{.btn-print{{display:none}}body{{padding:6px}}}}
 </style></head><body>
 <button class="btn-print" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
-<h2>📖 Diario de actividad — Náutica Viamar</h2>
+<h2>📖 Diario de actividad — Supermercado Náutico</h2>
 <div class="per">{per} · {len(eventos)} eventos</div>
 <table>
   <thead><tr><th style="width:130px">Tipo</th><th style="width:200px">Lead</th><th style="width:160px">Etapa</th><th>Nota</th></tr></thead>
@@ -1624,7 +1624,7 @@ Sé directo, usa datos concretos del informe y enfócate en lo accionable. Forma
                 _s_cell=ParagraphStyle("c",fontName="Helvetica",fontSize=8,textColor=_DARK,leading=11)
                 _s_bold=ParagraphStyle("b",fontName="Helvetica-Bold",fontSize=8,textColor=_DARK,leading=11)
                 _s_dia=ParagraphStyle("d",fontName="Helvetica-Bold",fontSize=9,textColor=_BLUE)
-                _elems=[Paragraph("Diario de actividad — Náutica Viamar",_s_tit),
+                _elems=[Paragraph("Diario de actividad — Supermercado Náutico",_s_tit),
                         Paragraph(f"{d_desde.strftime('%d/%m/%Y')} — {d_hasta.strftime('%d/%m/%Y')} · {len(eventos)} eventos",_s_sub)]
                 _data=[["Tipo","Lead / Empresa","Etapa","Nota"]]
                 _row_styles=[("BACKGROUND",(0,0),(-1,0),_BLUE),("TEXTCOLOR",(0,0),(-1,0),_rc.white),
@@ -1941,7 +1941,7 @@ elif "Lead" in page:
 <div class='section-title'>Historial de comunicaciones</div>
 <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Nota</th></tr></thead>
 <tbody>{_hist_rows}</tbody></table>
-<div class='footer'><span>NautiCRM · Náutica Viamar</span><span>Generado: {date.today().strftime('%d/%m/%Y')}</span></div>
+<div class='footer'><span>NautiCRM · Supermercado Náutico</span><span>Generado: {date.today().strftime('%d/%m/%Y')}</span></div>
 </body></html>"""
             import streamlit.components.v1 as _comp
             _n_hist = len(existing.get("historial", []))
@@ -2269,7 +2269,7 @@ elif "Asistente" in page:
         return "\n".join(lines)
 
     _SYS_BASE = (
-        "Eres el asistente CRM de Náutica Viamar, empresa náutica en Ibiza especializada en venta de barcos de motor, vela y catamarán. "
+        "Eres el asistente CRM de Supermercado Náutico, empresa náutica en Ibiza especializada en venta de barcos de motor, vela y catamarán. "
         "Tienes acceso completo a TODOS los datos del CRM: pipeline activo, cerrados ganados/perdidos, leads en pausa, archivo frío y clientes pasivos históricos. "
         "Responde SIEMPRE en español, de forma concisa y estructurada. Usa tablas markdown para listados. "
         "Cuando busques modelos de barco, busca tanto en tipoEmbarcacion como en modeloEslora y también en las notas (campo NOTAS). "
