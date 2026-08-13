@@ -552,23 +552,31 @@ def _fetch_model_info(marca, modelo_eslora):
         text = _re.sub(r"<[^>]+>", " ", raw)
         return _re.sub(r"\s+", " ", text).strip()
 
+    def _extraer_urls_ddg(html, site_filtro=None):
+        """Extrae URLs reales de los resultados HTML de DuckDuckGo.
+        DDG usa redirecciones /l/?uddg=URL_ENCODED — hay que decodificarlas."""
+        # Método 1: parámetro uddg (formato principal de DDG)
+        encoded = _re.findall(r'uddg=(https?[^&"\'>\s]+)', html)
+        urls = [_urlparse.unquote(u) for u in encoded]
+        # Método 2: enlaces directos (fallback)
+        if not urls:
+            urls = _re.findall(r'href="(https?://[^"&]+)"', html)
+        # Filtrar por dominio si se indica
+        if site_filtro:
+            urls = [u for u in urls if site_filtro in u]
+        return [u for u in urls if "duckduckgo" not in u]
+
     for query in queries:
         try:
             sr = _rq.get(
                 f"https://html.duckduckgo.com/html/?q={_urlparse.quote(query)}",
                 headers=hdrs, timeout=12
             )
-            # Buscar URLs del dominio oficial
-            urls = _re.findall(
-                r'href="(https?://(?:www\.)?' + _re.escape(site) + r'[^"&]*)"',
-                sr.text
-            )
-            urls = [u for u in urls if site in u and "duckduckgo" not in u]
-            if not urls:
-                # Último recurso sin site: aceptar cualquier URL del resultado
-                if "site:" not in query:
-                    all_urls = _re.findall(r'href="(https?://[^"&]+)"', sr.text)
-                    urls = [u for u in all_urls if "duckduckgo" not in u and marca.lower() in u.lower()]
+            urls = _extraer_urls_ddg(sr.text, site)
+            if not urls and "site:" not in query:
+                # Sin restricción de dominio como último recurso
+                urls = _extraer_urls_ddg(sr.text)
+                urls = [u for u in urls if marca.lower() in u.lower()]
             if not urls:
                 continue
 
