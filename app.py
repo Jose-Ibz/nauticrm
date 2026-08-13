@@ -585,10 +585,31 @@ def _fetch_model_info(marca, modelo_eslora):
             page_url = urls[0]
             pr = _rq.get(page_url, headers=hdrs, timeout=12)
             pr.encoding = "utf-8"
-            text = _limpiar_html(pr.text)
-            if len(text) < 200:
+            raw_html = pr.text
+
+            # Intentar extraer datos estructurados antes de limpiar el HTML
+            # (webs SPA como Beneteau/Jeanneau usan Next.js — el HTML visible está vacío
+            #  pero los datos reales van en __NEXT_DATA__ o JSON-LD)
+            import json as _jx
+            _extra_text = []
+            for _pat in (
+                r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+                r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+                r'window\.__INITIAL_STATE__\s*=\s*(\{.*?\});',
+            ):
+                for _m in _re.findall(_pat, raw_html, _re.DOTALL|_re.IGNORECASE):
+                    try:
+                        _d = _jx.loads(_m)
+                        _extra_text.append(_jx.dumps(_d, ensure_ascii=False)[:2000])
+                    except Exception:
+                        pass
+
+            text = _limpiar_html(raw_html)
+            # Combinar: texto visible + datos estructurados extraídos
+            combined = (text + " " + " ".join(_extra_text)).strip()
+            if len(combined) < 200:
                 continue  # página vacía o redirigida, probar siguiente
-            return text[:3500], page_url, None
+            return combined[:4000], page_url, None
         except Exception:
             continue
 
@@ -636,7 +657,7 @@ INSTRUCTIONS (follow strictly):
 - Write the ENTIRE email in {idioma_en} — this is mandatory, do not use any other language
 - Thank the client for their interest/visit naturally and warmly
 - Present us as exclusive distributors for Ibiza and Formentera{"of " + tipo.split()[0] if tipo else ""}
-{"- Highlight 2-3 key features of the model based on the web info (do not invent data)" if info_web else "- General presentation email: who we are, how we can help, full availability"}
+{"- Extract and mention 2-3 specific technical features or highlights of the model from the web content above (dimensions, engine, design, comfort, range, etc.) — be concrete, not generic" if info_web else "- General presentation email: who we are, how we can help, full availability"}
 - Invite the client to visit us or schedule a call/meeting to clarify whatever they need — do NOT mention "showroom"
 - Always use formal address (usted/Sie/vous/Lei depending on language) — never informal
 - Professional but warm tone, not overly salesy
@@ -1951,17 +1972,27 @@ elif "Lead" in page:
                     _url_dir = _url_directa.strip()
                     if _url_dir.startswith("http"):
                         # URL pegada directamente — buscar sin pasar por DuckDuckGo
-                        import requests as _rq2
+                        import requests as _rq2, json as _jx2
                         try:
                             _hdrs2 = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120"}
                             _pr2 = _rq2.get(_url_dir, headers=_hdrs2, timeout=12)
                             _pr2.encoding = "utf-8"
                             _raw2 = _pr2.text
+                            # Extraer datos estructurados (Next.js / JSON-LD)
+                            _extra2 = []
+                            for _pat2 in (
+                                r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+                                r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+                            ):
+                                for _m2 in _re.findall(_pat2, _raw2, _re.DOTALL|_re.IGNORECASE):
+                                    try: _extra2.append(_jx2.dumps(_jx2.loads(_m2), ensure_ascii=False)[:2000])
+                                    except: pass
                             for _tag2 in ("script","style","nav","footer","header","noscript"):
                                 _raw2 = _re.sub(rf"<{_tag2}[^>]*>.*?</{_tag2}>", " ", _raw2, flags=_re.DOTALL|_re.IGNORECASE)
                             _txt2 = _re.sub(r"<[^>]+>", " ", _raw2)
                             _txt2 = _re.sub(r"\s+", " ", _txt2).strip()
-                            _info_w, _url_w = _txt2[:3500], _url_dir
+                            _combined2 = (_txt2 + " " + " ".join(_extra2)).strip()
+                            _info_w, _url_w = _combined2[:4000], _url_dir
                             st.success(f"✅ Contenido obtenido de: {_url_dir}")
                         except Exception as _eu:
                             st.warning(f"⚠️ No se pudo acceder a la URL: {_eu} — Se generará email general.")
@@ -1975,9 +2006,32 @@ elif "Lead" in page:
                     st.session_state["_email_generado"] = _email_txt
 
             if st.session_state.get("_email_generado"):
-                st.markdown("**📧 Email generado — copia y edita según necesites:**")
-                st.text_area("", value=st.session_state["_email_generado"],
-                             height=380, key="email_output_area")
+                # Separar asunto del cuerpo
+                _full_email = st.session_state["_email_generado"]
+                _asunto, _cuerpo = "", _full_email
+                for _li, _ln in enumerate(_full_email.split('\n')):
+                    if _re.match(r'^(Asunto|Subject|Betreff|Sujet|Oggetto|Onderwerp|Ämne)\s*:', _ln, _re.IGNORECASE):
+                        _asunto = _re.sub(r'^[^:]+:\s*', '', _ln).strip()
+                        _resto = '\n'.join(_full_email.split('\n')[_li+1:]).lstrip('\n')
+                        _cuerpo = _resto
+                        break
+
+                st.markdown("**📧 Email generado:**")
+                if _asunto:
+                    st.text_input("📩 Asunto:", value=_asunto, key="email_asunto_display")
+                st.text_area("Cuerpo:", value=_cuerpo, height=360, key="email_output_area")
+
+                # Botón copiar cuerpo con JavaScript
+                _cuerpo_esc = _html.escape(_cuerpo)
+                st.markdown(f"""
+<textarea id="_ecopy" style="position:fixed;left:-9999px;top:0;opacity:0">{_cuerpo_esc}</textarea>
+<button onclick="var t=document.getElementById('_ecopy');t.select();document.execCommand('copy');this.innerHTML='✅ &nbsp;¡Copiado!';setTimeout(()=>this.innerHTML='📋 &nbsp;Copiar cuerpo del email',2200)"
+    style="background:linear-gradient(135deg,#0077b6,#00b4d8);color:#fff;border:none;border-radius:6px;
+           padding:10px 18px;cursor:pointer;font-weight:700;width:100%;font-size:0.95rem;margin-top:4px">
+    📋 &nbsp;Copiar cuerpo del email
+</button>""", unsafe_allow_html=True)
+
+                st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
                 if st.button("🗑️ Limpiar email", key="btn_clear_email"):
                     st.session_state["_email_generado"] = None
                     st.rerun()
