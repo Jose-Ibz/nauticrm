@@ -121,6 +121,14 @@ def _get_spreadsheet():
     gc = gspread.authorize(creds)
     return gc.open_by_key(st.secrets["spreadsheet_id"])
 
+def _api_error_msg(e):
+    """Extrae código HTTP y mensaje real del APIError de gspread."""
+    try:
+        r = e.response
+        return f"HTTP {r.status_code}: {r.json().get('error',{}).get('message', r.text[:200])}"
+    except Exception:
+        return str(e)
+
 def get_sheet(tab):
     last_exc = None
     for _attempt in range(3):
@@ -133,8 +141,9 @@ def get_sheet(tab):
             last_exc = e
             _get_spreadsheet.clear()
             if _attempt < 2:
-                _time.sleep(2 ** _attempt)  # 1 s, 2 s antes de reintentar
-    raise last_exc
+                _time.sleep(2 ** _attempt)
+    # Relanzar con mensaje legible para que aparezca en la UI
+    raise RuntimeError(f"Error conectando con Google Sheets — {_api_error_msg(last_exc)}")
 
 LEAD_COLS = ["id","nombre","empresa","telefono","email","idioma","tipoEmbarcacion","modeloEslora","presupuesto","usoPrevisto","asignadoA","etapa","probabilidad","valorOperacion","fuenteLead","proximaAccion","fechaProximaAccion","historial","fechaCreacion","ultimaActualizacion"]
 ARCH_COLS  = LEAD_COLS + ["fechaArchivo", "motivoArchivo"]
@@ -2242,11 +2251,18 @@ elif "Asistente" in page:
 elif "Config" in page:
     st.markdown("## ⚙️ Configuración")
     tab1,tab2,tab3,tab4=st.tabs(["👥 Equipo de ventas","🚢 Catálogo de embarcaciones","📡 Fuentes de lead","💾 Copias de seguridad"])
+    def _cfg_save(fn, *args, msg_ok="✅ Guardado."):
+        """Wrapper para guardar config mostrando error legible si falla."""
+        try:
+            fn(*args); st.success(msg_ok); st.rerun()
+        except Exception as _e:
+            st.error(f"⚠️ No se pudo guardar: {_e}\n\nEspera unos segundos e inténtalo de nuevo.")
+
     with tab1:
         with st.form("cfg_v"):
             names=[st.text_input(f"Vendedor {i+1}",value=v) for i,v in enumerate(vendedores)]
             if st.form_submit_button("💾 Guardar nombres"):
-                save_config(names,boat_types,sources); st.success("✅ Actualizado."); st.rerun()
+                _cfg_save(save_config, names, boat_types, sources)
     with tab2:
         st.caption("Gestiona los valores del desplegable de embarcación. Puedes añadir, renombrar o eliminar entradas.")
         st.markdown("<br>", unsafe_allow_html=True)
@@ -2270,16 +2286,16 @@ elif "Config" in page:
                     to_delete_bt = bt
         if bt_rename_from and bt_rename_to:
             new_bt = [bt_rename_to if x == bt_rename_from else x for x in boat_types]
-            save_config(vendedores, new_bt, sources); st.rerun()
+            _cfg_save(save_config, vendedores, new_bt, sources)
         if to_delete_bt:
-            save_config(vendedores, [x for x in boat_types if x != to_delete_bt], sources); st.rerun()
+            _cfg_save(save_config, vendedores, [x for x in boat_types if x != to_delete_bt], sources)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.form("cfg_b"):
             c1, c2 = st.columns([3, 1])
             nueva = c1.text_input("Nueva marca/tipo", placeholder="Ej: Beneteau Motor, Lasai 36...", label_visibility="collapsed")
             if c2.form_submit_button("➕ Añadir"):
                 if nueva.strip() and nueva.strip() not in boat_types:
-                    save_config(vendedores, boat_types+[nueva.strip()], sources); st.success(f"✅ '{nueva.strip()}' añadido."); st.rerun()
+                    _cfg_save(save_config, vendedores, boat_types+[nueva.strip()], sources, msg_ok=f"✅ '{nueva.strip()}' añadido.")
                 elif nueva.strip() in boat_types: st.warning("Ya existe.")
     with tab3:
         st.caption("Gestiona los valores del desplegable de fuente de lead.")
@@ -2291,15 +2307,14 @@ elif "Config" in page:
                 c1.markdown(f"<div style='background:#0d1e35;border:1px solid #1a3050;border-radius:6px;padding:5px 10px;font-size:0.82rem;color:#e8e0d0'>{src}</div>", unsafe_allow_html=True)
                 if c2.button("✕",key=f"del_src_{i}"): to_delete_src=src
         if to_delete_src:
-            new_src=[x for x in sources if x!=to_delete_src]
-            save_config(vendedores,boat_types,new_src); st.rerun()
+            _cfg_save(save_config, vendedores, boat_types, [x for x in sources if x != to_delete_src])
         st.markdown("<br>", unsafe_allow_html=True)
         with st.form("cfg_src"):
             c1,c2=st.columns([3,1])
             nueva_src=c1.text_input("Nueva fuente",placeholder="Ej: LinkedIn, Partner, Evento...",label_visibility="collapsed")
             if c2.form_submit_button("➕ Añadir"):
                 if nueva_src.strip() and nueva_src.strip() not in sources:
-                    save_config(vendedores,boat_types,sources+[nueva_src.strip()]); st.success(f"✅ '{nueva_src.strip()}' añadido."); st.rerun()
+                    _cfg_save(save_config, vendedores, boat_types, sources+[nueva_src.strip()], msg_ok=f"✅ '{nueva_src.strip()}' añadido.")
                 elif nueva_src.strip() in sources: st.warning("Ya existe.")
     with tab4:
         st.markdown("### 💾 Copias de Seguridad")
