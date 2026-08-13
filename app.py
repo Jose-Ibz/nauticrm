@@ -2281,8 +2281,6 @@ elif "Config" in page:
                 if nueva.strip() and nueva.strip() not in boat_types:
                     save_config(vendedores, boat_types+[nueva.strip()], sources); st.success(f"✅ '{nueva.strip()}' añadido."); st.rerun()
                 elif nueva.strip() in boat_types: st.warning("Ya existe.")
-        if st.button("↺ Restaurar por defecto"):
-            save_config(vendedores, ["Beneteau Motor","Beneteau Vela","Sasga","Lasai","Karnic","Wellcraft","Jeanneau","Sunseeker","Princess","Azimut","Catamarán","Zodiac","Otro"], sources); st.rerun()
     with tab3:
         st.caption("Gestiona los valores del desplegable de fuente de lead.")
         st.markdown("<br>", unsafe_allow_html=True)
@@ -2303,8 +2301,6 @@ elif "Config" in page:
                 if nueva_src.strip() and nueva_src.strip() not in sources:
                     save_config(vendedores,boat_types,sources+[nueva_src.strip()]); st.success(f"✅ '{nueva_src.strip()}' añadido."); st.rerun()
                 elif nueva_src.strip() in sources: st.warning("Ya existe.")
-        if st.button("↺ Restaurar fuentes por defecto"):
-            save_config(vendedores,boat_types,["Feria Náutica","Web","Referido","RRSS","Llamada Fría","Otro"]); st.rerun()
     with tab4:
         st.markdown("### 💾 Copias de Seguridad")
         st.caption(f"Copia automática cada día al abrir la app. Últimas **{BACKUP_MAX}** en Google Sheets + copia independiente en GitHub si está configurado.")
