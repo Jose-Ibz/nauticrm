@@ -2324,7 +2324,7 @@ elif "Config" in page:
         st.caption("Gestiona los valores del desplegable de embarcación. Puedes añadir, renombrar o eliminar entradas.")
         st.markdown("<br>", unsafe_allow_html=True)
         _editando_bt = st.session_state.get("_edit_bt_idx", None)
-        to_delete_bt = None; bt_rename_from = None; bt_rename_to = None
+        bt_rename_from = None; bt_rename_to = None
         for i, bt in enumerate(boat_types):
             c1, c2, c3 = st.columns([4, 1, 1])
             if _editando_bt == i:
@@ -2340,12 +2340,19 @@ elif "Config" in page:
                 if c2.button("✏️", key=f"edit_{i}", help="Renombrar"):
                     st.session_state["_edit_bt_idx"] = i; st.rerun()
                 if c3.button("✕", key=f"del_{i}", help="Eliminar"):
-                    to_delete_bt = bt
+                    st.session_state["_confirm_del_bt"] = bt; st.rerun()
         if bt_rename_from and bt_rename_to:
             new_bt = [bt_rename_to if x == bt_rename_from else x for x in boat_types]
             _cfg_save(save_config, vendedores, new_bt, sources)
-        if to_delete_bt:
-            _cfg_save(save_config, vendedores, [x for x in boat_types if x != to_delete_bt], sources)
+        _confirm_del_bt = st.session_state.get("_confirm_del_bt")
+        if _confirm_del_bt:
+            st.warning(f"¿Está seguro de querer borrar **'{_html.escape(_confirm_del_bt)}'**?")
+            _dby, _dbn = st.columns(2)
+            if _dby.button("✅ Sí, borrar", use_container_width=True, key="confirm_del_bt_yes"):
+                st.session_state.pop("_confirm_del_bt", None)
+                _cfg_save(save_config, vendedores, [x for x in boat_types if x != _confirm_del_bt], sources)
+            if _dbn.button("❌ Cancelar", use_container_width=True, key="confirm_del_bt_no"):
+                st.session_state.pop("_confirm_del_bt", None); st.rerun()
         st.markdown("<br>", unsafe_allow_html=True)
         with st.form("cfg_b"):
             c1, c2 = st.columns([3, 1])
@@ -2378,14 +2385,22 @@ elif "Config" in page:
     with tab3:
         st.caption("Gestiona los valores del desplegable de fuente de lead.")
         st.markdown("<br>", unsafe_allow_html=True)
-        cols_src=st.columns(4); to_delete_src=None
+        cols_src=st.columns(4)
         for i,src in enumerate(sources):
             with cols_src[i%4]:
                 c1,c2=st.columns([3,1])
                 c1.markdown(f"<div style='background:#0d1e35;border:1px solid #1a3050;border-radius:6px;padding:5px 10px;font-size:0.82rem;color:#e8e0d0'>{src}</div>", unsafe_allow_html=True)
-                if c2.button("✕",key=f"del_src_{i}"): to_delete_src=src
-        if to_delete_src:
-            _cfg_save(save_config, vendedores, boat_types, [x for x in sources if x != to_delete_src])
+                if c2.button("✕",key=f"del_src_{i}"):
+                    st.session_state["_confirm_del_src"] = src; st.rerun()
+        _confirm_del_src = st.session_state.get("_confirm_del_src")
+        if _confirm_del_src:
+            st.warning(f"¿Está seguro de querer borrar **'{_html.escape(_confirm_del_src)}'**?")
+            _dsy, _dsn = st.columns(2)
+            if _dsy.button("✅ Sí, borrar", use_container_width=True, key="confirm_del_src_yes"):
+                st.session_state.pop("_confirm_del_src", None)
+                _cfg_save(save_config, vendedores, boat_types, [x for x in sources if x != _confirm_del_src])
+            if _dsn.button("❌ Cancelar", use_container_width=True, key="confirm_del_src_no"):
+                st.session_state.pop("_confirm_del_src", None); st.rerun()
         st.markdown("<br>", unsafe_allow_html=True)
         with st.form("cfg_src"):
             c1,c2=st.columns([3,1])
