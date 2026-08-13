@@ -139,10 +139,13 @@ def get_sheet(tab):
                 return sh.add_worksheet(title=tab, rows=1000, cols=30)
         except gspread.exceptions.APIError as e:
             last_exc = e
+            try: _status = e.response.status_code
+            except: _status = 0
+            if _status == 429:
+                break  # cuota agotada: no reintentar, no limpiar caché
             _get_spreadsheet.clear()
             if _attempt < 2:
                 _time.sleep(2 ** _attempt)
-    # Relanzar con mensaje legible para que aparezca en la UI
     raise RuntimeError(f"Error conectando con Google Sheets — {_api_error_msg(last_exc)}")
 
 LEAD_COLS = ["id","nombre","empresa","telefono","email","idioma","tipoEmbarcacion","modeloEslora","presupuesto","usoPrevisto","asignadoA","etapa","probabilidad","valorOperacion","fuenteLead","proximaAccion","fechaProximaAccion","historial","fechaCreacion","ultimaActualizacion"]
@@ -381,12 +384,8 @@ def save_config(vendedores, boat_types, sources, archivo=None, pasivos=None):
         ["boat_types", "||".join(boat_types)],
         ["sources", "||".join(sources)],
     ]
+    ws.clear()
     ws.update(rows, "A1")
-    try:
-        all_vals = ws.get_all_values()
-        if len(all_vals) > len(rows):
-            ws.delete_rows(len(rows)+1, len(all_vals))
-    except: pass
     load_config.clear()
     if archivo is not None:
         save_archivo_frio(archivo)
