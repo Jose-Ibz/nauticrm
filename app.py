@@ -124,8 +124,6 @@ h1,h2,h3{font-family:'Playfair Display',serif!important;color:#c9a84c!important}
 .stTextInput input,.stNumberInput input,.stTextArea textarea{background:#091220!important;color:#e8e0d0!important;border:1px solid #1a3050!important}
 .stButton>button,[data-testid="stFormSubmitButton"]>button{background:#c9a84c!important;color:#0a1628!important;font-weight:700!important;border:none!important;border-radius:6px!important}
 .stButton>button:hover,[data-testid="stFormSubmitButton"]>button:hover{opacity:.88!important}
-div[class*="st-key-btn_gen_email"] button,div[data-testid*="btn_gen_email"] button{background:linear-gradient(135deg,#0077b6,#00b4d8)!important;color:#fff!important;font-size:1rem!important;padding:.6rem 1rem!important;letter-spacing:.3px!important;border:none!important}
-div[class*="st-key-btn_gen_email"] button:hover,div[data-testid*="btn_gen_email"] button:hover{background:linear-gradient(135deg,#005f8e,#0096c7)!important;opacity:1!important}
 .stDataFrame{border:1px solid #1a3050!important;border-radius:8px!important}
 .stTabs [data-baseweb="tab-list"]{background:#0a1628;border-radius:8px;gap:4px;padding:4px}
 .stTabs [data-baseweb="tab"]{background:transparent!important;color:#7a8fa6!important;border-radius:6px!important}
@@ -1966,6 +1964,18 @@ elif "Lead" in page:
             _idioma_email = existing.get("idioma","Español")
             st.caption(f"Idioma del email: **{_idioma_email}** (según ficha del cliente)")
 
+            st.markdown("""<style>
+.st-key-btn_gen_email button,
+div.st-key-btn_gen_email button,
+[class~="st-key-btn_gen_email"] button,
+[class*="st-key-btn_gen_email"] button{
+    background:linear-gradient(135deg,#0077b6,#00b4d8)!important;
+    color:#fff!important;border:none!important;font-size:1rem!important;
+    font-weight:700!important;padding:.55rem 1rem!important}
+.st-key-btn_gen_email button:hover,
+[class*="st-key-btn_gen_email"] button:hover{
+    background:linear-gradient(135deg,#005f8e,#0096c7)!important;opacity:1!important}
+</style>""", unsafe_allow_html=True)
             if st.button("✉️ Generar email ahora", key="btn_gen_email", use_container_width=True):
                 with st.spinner("Buscando información del modelo y redactando…"):
                     _info_w, _url_w, _err_w = (None, None, None)
