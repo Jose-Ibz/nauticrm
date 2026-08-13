@@ -1894,15 +1894,23 @@ elif "Lead" in page:
         st.markdown("---")
         with st.expander("✉️ Generar email de seguimiento con IA"):
             # La marca se detecta del catálogo (tipoEmbarcacion)
-            # El modelo se toma directamente del campo modeloEslora
+            # El modelo se toma directamente del campo modeloEslora y se expanden abreviaturas
             _marca_det, _tipo_resto = _detectar_marca(existing.get("tipoEmbarcacion",""))
             _modelo_det = existing.get("modeloEslora","").strip() or _tipo_resto
             _modelo_exp = _expandir_abreviaturas(_marca_det, _modelo_det) if _marca_det else _modelo_det
+
             if _marca_det:
-                _info_exp = f" → **{_modelo_exp}**" if _modelo_exp != _modelo_det else ""
-                st.info(f"🔍 Se buscará: **{_marca_det}** › **{_modelo_det}**{_info_exp} en `{BRAND_SITES.get(_marca_det,'')}`")
+                st.caption(f"Astillero detectado: **{_marca_det}** · Web: `{BRAND_SITES.get(_marca_det,'')}`")
             else:
-                st.warning("⚠️ Marca no reconocida en el directorio — se generará email de presentación general.")
+                st.warning("⚠️ Marca no reconocida — se generará email de presentación general sin buscar web.")
+
+            # Campo editable: pre-relleno con el modelo expandido, el usuario puede corregir
+            _modelo_buscar = st.text_input(
+                "🔍 Modelo a buscar en la web del astillero (edita si es incorrecto):",
+                value=_modelo_exp,
+                key=f"modelo_buscar_{existing.get('id','')}",
+                placeholder="Ej: Gran Turismo 40, Menorquin 48, Flyer 10…"
+            )
 
             _idioma_email = existing.get("idioma","Español")
             st.caption(f"Idioma del email: **{_idioma_email}** (según ficha del cliente)")
@@ -1910,8 +1918,8 @@ elif "Lead" in page:
             if st.button("✉️ Generar email ahora", key="btn_gen_email", use_container_width=True):
                 with st.spinner("Buscando información del modelo y redactando…"):
                     _info_w, _url_w, _err_w = (None, None, None)
-                    if _marca_det:
-                        _info_w, _url_w, _err_w = _fetch_model_info(_marca_det, _modelo_det)
+                    if _marca_det and _modelo_buscar.strip():
+                        _info_w, _url_w, _err_w = _fetch_model_info(_marca_det, _modelo_buscar.strip())
                     if _err_w:
                         st.warning(f"⚠️ {_err_w} — Se generará email general sin info del modelo.")
                     elif _url_w:
