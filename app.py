@@ -124,8 +124,8 @@ h1,h2,h3{font-family:'Playfair Display',serif!important;color:#c9a84c!important}
 .stTextInput input,.stNumberInput input,.stTextArea textarea{background:#091220!important;color:#e8e0d0!important;border:1px solid #1a3050!important}
 .stButton>button,[data-testid="stFormSubmitButton"]>button{background:#c9a84c!important;color:#0a1628!important;font-weight:700!important;border:none!important;border-radius:6px!important}
 .stButton>button:hover,[data-testid="stFormSubmitButton"]>button:hover{opacity:.88!important}
-[class*="st-key-btn_gen_email"]>button{background:linear-gradient(135deg,#0077b6,#00b4d8)!important;color:#fff!important;font-size:1rem!important;padding:.6rem 1rem!important;letter-spacing:.3px!important}
-[class*="st-key-btn_gen_email"]>button:hover{background:linear-gradient(135deg,#005f8e,#0096c7)!important;opacity:1!important}
+div[class*="st-key-btn_gen_email"] button,div[data-testid*="btn_gen_email"] button{background:linear-gradient(135deg,#0077b6,#00b4d8)!important;color:#fff!important;font-size:1rem!important;padding:.6rem 1rem!important;letter-spacing:.3px!important;border:none!important}
+div[class*="st-key-btn_gen_email"] button:hover,div[data-testid*="btn_gen_email"] button:hover{background:linear-gradient(135deg,#005f8e,#0096c7)!important;opacity:1!important}
 .stDataFrame{border:1px solid #1a3050!important;border-radius:8px!important}
 .stTabs [data-baseweb="tab-list"]{background:#0a1628;border-radius:8px;gap:4px;padding:4px}
 .stTabs [data-baseweb="tab"]{background:transparent!important;color:#7a8fa6!important;border-radius:6px!important}
@@ -1916,10 +1916,17 @@ elif "Lead" in page:
 
             # Campo editable: pre-relleno con el modelo expandido, el usuario puede corregir
             _modelo_buscar = st.text_input(
-                "🔍 Modelo a buscar en la web del astillero (edita si es incorrecto):",
+                "🔍 Modelo a buscar (edita si es incorrecto):",
                 value=_modelo_exp,
                 key=f"modelo_buscar_{existing.get('id','')}",
                 placeholder="Ej: Gran Turismo 40, Menorquin 48, Flyer 10…"
+            )
+            # URL directa: si el usuario la pega, omite la búsqueda automática
+            _url_directa = st.text_input(
+                "🔗 O pega directamente la URL del modelo (opcional — si la búsqueda no la encuentra):",
+                value="",
+                key=f"url_directa_{existing.get('id','')}",
+                placeholder="https://www.beneteau.com/es/gran-turismo-nuevo/gran-turismo-40"
             )
 
             _idioma_email = existing.get("idioma","Español")
@@ -1928,12 +1935,29 @@ elif "Lead" in page:
             if st.button("✉️ Generar email ahora", key="btn_gen_email", use_container_width=True):
                 with st.spinner("Buscando información del modelo y redactando…"):
                     _info_w, _url_w, _err_w = (None, None, None)
-                    if _marca_det and _modelo_buscar.strip():
+                    _url_dir = _url_directa.strip()
+                    if _url_dir.startswith("http"):
+                        # URL pegada directamente — buscar sin pasar por DuckDuckGo
+                        import requests as _rq2
+                        try:
+                            _hdrs2 = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120"}
+                            _pr2 = _rq2.get(_url_dir, headers=_hdrs2, timeout=12)
+                            _pr2.encoding = "utf-8"
+                            _raw2 = _pr2.text
+                            for _tag2 in ("script","style","nav","footer","header","noscript"):
+                                _raw2 = _re.sub(rf"<{_tag2}[^>]*>.*?</{_tag2}>", " ", _raw2, flags=_re.DOTALL|_re.IGNORECASE)
+                            _txt2 = _re.sub(r"<[^>]+>", " ", _raw2)
+                            _txt2 = _re.sub(r"\s+", " ", _txt2).strip()
+                            _info_w, _url_w = _txt2[:3500], _url_dir
+                            st.success(f"✅ Contenido obtenido de: {_url_dir}")
+                        except Exception as _eu:
+                            st.warning(f"⚠️ No se pudo acceder a la URL: {_eu} — Se generará email general.")
+                    elif _marca_det and _modelo_buscar.strip():
                         _info_w, _url_w, _err_w = _fetch_model_info(_marca_det, _modelo_buscar.strip())
-                    if _err_w:
-                        st.warning(f"⚠️ {_err_w} — Se generará email general sin info del modelo.")
-                    elif _url_w:
-                        st.success(f"✅ Info encontrada en: {_url_w}")
+                        if _err_w:
+                            st.warning(f"⚠️ {_err_w} — Se generará email general sin info del modelo.")
+                        elif _url_w:
+                            st.success(f"✅ Info encontrada en: {_url_w}")
                     _email_txt = _generar_email(existing, _info_w, _url_w)
                     st.session_state["_email_generado"] = _email_txt
 
