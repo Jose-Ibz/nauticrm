@@ -262,6 +262,20 @@ def load_config():
     if src_row: sources = src_row[0].split("||")
     return vendedores, boat_types, sources
 
+def _gsheets_retry(fn, retries=3, wait=4):
+    """Ejecuta fn() con reintentos ante errores transitorios de la API de Google Sheets."""
+    import time as _time
+    import gspread.exceptions as _gex
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            return fn()
+        except (_gex.APIError, Exception) as e:
+            last_exc = e
+            if attempt < retries - 1:
+                _time.sleep(wait * (attempt + 1))
+    raise last_exc
+
 def save_lead(lead, is_new=True):
     # Limpiar próxima acción si el lead está cerrado — evita puntos rojos en agenda
     if lead.get("etapa") in ("Cerrado Ganado", "Cerrado Perdido"):
@@ -269,22 +283,23 @@ def save_lead(lead, is_new=True):
     ws = get_sheet("Leads")
     import json as _jsl
     hist_str = _jsl.dumps(lead.get("historial", []), ensure_ascii=False)
-    row = [lead.get(c,"") for c in LEAD_COLS[:-1]] + [hist_str if c=="historial" else lead.get(c,"") for c in ["ultimaActualizacion"]]
     row = []
     for c in LEAD_COLS:
         if c == "historial": row.append(hist_str)
         else: row.append(lead.get(c,""))
     if is_new:
-        ws.append_row(row)
+        _gsheets_retry(lambda: ws.append_row(row))
     else:
-        all_values = ws.get_all_values()
-        if all_values and len(all_values) > 1:
-            headers = all_values[0]
-            data = [dict(zip(headers, row)) for row in all_values[1:]]
-            for i,r in enumerate(data):
-                if r.get("id") == lead["id"]:
-                    ws.update([row], f"A{i+2}:{chr(64+len(LEAD_COLS))}{i+2}")
-                    break
+        def _update():
+            all_values = ws.get_all_values()
+            if all_values and len(all_values) > 1:
+                headers = all_values[0]
+                data = [dict(zip(headers, r)) for r in all_values[1:]]
+                for i, r in enumerate(data):
+                    if r.get("id") == lead["id"]:
+                        ws.update([row], f"A{i+2}:{chr(64+len(LEAD_COLS))}{i+2}")
+                        break
+        _gsheets_retry(_update)
     load_leads.clear()
 
 def delete_lead(lead_id):
