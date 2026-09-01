@@ -263,6 +263,9 @@ def load_config():
     return vendedores, boat_types, sources
 
 def save_lead(lead, is_new=True):
+    # Limpiar próxima acción si el lead está cerrado — evita puntos rojos en agenda
+    if lead.get("etapa") in ("Cerrado Ganado", "Cerrado Perdido"):
+        lead = {**lead, "proximaAccion": "", "fechaProximaAccion": ""}
     ws = get_sheet("Leads")
     import json as _jsl
     hist_str = _jsl.dumps(lead.get("historial", []), ensure_ascii=False)
